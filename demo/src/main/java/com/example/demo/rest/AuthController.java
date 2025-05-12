@@ -1,8 +1,11 @@
+// src/main/java/com/example/demo/rest/AuthController.java
 package com.example.demo.rest;
 
 import com.example.demo.jwt.JwtUtil;
 import com.example.demo.model.Usuario;
 import com.example.demo.repository.UsuarioRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.*;
 import org.springframework.security.core.userdetails.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -13,6 +16,8 @@ import java.util.Map;
 
 @RestController
 public class AuthController {
+
+    private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
 
     private final AuthenticationManager authManager;
     private final JwtUtil jwtUtil;
@@ -40,11 +45,21 @@ public class AuthController {
         String username = body.get("username");
         String password = body.get("password");
 
-        authManager.authenticate(new UsernamePasswordAuthenticationToken(username, password));
-        UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-        String token = jwtUtil.generateToken(userDetails.getUsername());
+        logger.info("Intento de login para usuario: {}", username);
 
-        return Map.of("token", token);
+        try {
+            authManager.authenticate(new UsernamePasswordAuthenticationToken(username, password));
+            UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+            String token = jwtUtil.generateToken(userDetails.getUsername());
+            logger.info("Login exitoso para usuario: {}", username);
+            return Map.of("token", token);
+        } catch (BadCredentialsException e) {
+            logger.warn("Credenciales incorrectas para usuario: {}", username);
+            return Map.of("error", "Credenciales incorrectas");
+        } catch (Exception e) {
+            logger.error("Error durante login para usuario: {}", username, e);
+            return Map.of("error", "Error al iniciar sesión");
+        }
     }
 
     //Registro: crea un nuevo usuario
@@ -52,19 +67,32 @@ public class AuthController {
     public Map<String, String> registro(@RequestBody Map<String, String> body) {
         String username = body.get("username");
         String rawPassword = body.get("password");
+        String firstName = body.get("firstName"); // Nuevo campo
+        String lastName = body.get("lastName");   // Nuevo campo
+
+        logger.info("Intento de registro para usuario: {}", username);
 
         if (usuarioRepository.findByUsername(username).isPresent()) {
+            logger.warn("Nombre de usuario ya en uso: {}", username);
             return Map.of("error", "Ese nombre de usuario ya está en uso.");
         }
 
-        Usuario nuevo = new Usuario();
-        nuevo.setUsername(username);
-        nuevo.setPassword(passwordEncoder.encode(rawPassword));
-        nuevo.setEnabled(true);
-        nuevo.setRoles(Collections.singleton("USER")); // Rol por defecto
+        try {
+            Usuario nuevo = Usuario.builder()
+                    .username(username)
+                    .password(passwordEncoder.encode(rawPassword))
+                    .firstName(firstName)
+                    .lastName(lastName)
+                    .enabled(true)
+                    .roles(Collections.singleton("USER"))
+                    .build();
 
-        usuarioRepository.save(nuevo);
-
-        return Map.of("mensaje", "Usuario registrado correctamente.");
+            usuarioRepository.save(nuevo);
+            logger.info("Usuario registrado correctamente: {}", username);
+            return Map.of("mensaje", "Usuario registrado correctamente.");
+        } catch (Exception e) {
+            logger.error("Error durante registro para usuario: {}", username, e);
+            return Map.of("error", "Error al registrar usuario.");
+        }
     }
 }

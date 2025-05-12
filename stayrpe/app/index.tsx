@@ -9,6 +9,7 @@ export default function Login() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [errors, setErrors] = useState<{username?: string; password?: string}>({});
 
   // Redirección automática si el token ya existe
   useEffect(() => {
@@ -22,7 +23,33 @@ export default function Login() {
     checkLogin();
   }, []);
 
+  const validateForm = () => {
+    const newErrors: {username?: string; password?: string} = {};
+    let isValid = true;
+
+    if (!username.trim()) {
+      newErrors.username = "El correo electrónico es obligatorio";
+      isValid = false;
+    }
+
+    if (!password) {
+      newErrors.password = "La contraseña es obligatoria";
+      isValid = false;
+    }
+
+    setErrors(newErrors);
+    return isValid;
+  };
+
   const handleLogin = async () => {
+    // Limpiar errores previos
+    setErrors({});
+    
+    // Validar antes de enviar
+    if (!validateForm()) {
+      return;
+    }
+
     try {
       const res = await fetch("http://192.168.0.57:8080/login", {
         method: "POST",
@@ -56,16 +83,25 @@ export default function Login() {
         style={styles.input}
         placeholder="stayrpe@email.com"
         value={username}
-        onChangeText={setUsername}
+        onChangeText={(text) => {
+          setUsername(text);
+          if (errors.username) setErrors({...errors, username: undefined});
+        }}
         autoCapitalize="none"
       />
+      {errors.username && <Text style={styles.errorText}>{errors.username}</Text>}
+      
       <TextInput
         style={styles.input}
         placeholder="Password"
         secureTextEntry={true}
         value={password}
-        onChangeText={setPassword}
+        onChangeText={(text) => {
+          setPassword(text);
+          if (errors.password) setErrors({...errors, password: undefined});
+        }}
       />
+      {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
 
       <TouchableOpacity onPress={() => router.push("/register")}>
         <Text style={styles.registerText}>¿Aún no tienes cuenta? Regístrate</Text>
@@ -114,5 +150,13 @@ const styles = StyleSheet.create({
   },
   button: {
     alignItems: "center",
+  },
+  errorText: {
+    color: "red",
+    fontSize: 12,
+    marginTop: 5,
+    marginLeft: 40,
+    textAlign: "left",
+    width: "80%",
   },
 });

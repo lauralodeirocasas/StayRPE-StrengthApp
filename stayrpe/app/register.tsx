@@ -1,4 +1,4 @@
-import { StyleSheet, Text, TextInput, View, TouchableOpacity, Alert } from "react-native";
+import { StyleSheet, Text, TextInput, View, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -20,16 +20,22 @@ const registerSchema = z.object({
     .string()
     .min(6, "La contraseña debe tener al menos 6 caracteres.")
     .max(20, "La contraseña no puede exceder los 20 caracteres."),
-  firstName: z
-    .string()
-    .min(1, "El nombre es obligatorio."),
-  lastName: z
-    .string()
-    .min(1, "Los apellidos son obligatorios."),
+  firstName: z.string().min(1, "El nombre es obligatorio."),
+  lastName: z.string().min(1, "Los apellidos son obligatorios."),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Las contraseñas no coinciden.",
   path: ["confirmPassword"],
 });
+
+// Tipado para los errores
+type RegisterErrors = {
+  username?: string;
+  password?: string;
+  confirmPassword?: string;
+  firstName?: string;
+  lastName?: string;
+  general?: string;
+};
 
 export default function Register() {
   const router = useRouter();
@@ -38,12 +44,10 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [errors, setErrors] = useState<RegisterErrors>({}); // Tipado explícito
 
   const handleRegister = async () => {
     try {
-      console.log("Iniciando solicitud de registro...");
-
-      // Validar los datos del formulario con Zod
       registerSchema.parse({
         username,
         password,
@@ -52,7 +56,7 @@ export default function Register() {
         lastName,
       });
 
-      // Enviar solicitud de registro al servidor
+      console.log("Iniciando solicitud de registro...");
       const res = await fetch("http://192.168.0.57:8080/register", {
         method: "POST",
         headers: {
@@ -61,25 +65,17 @@ export default function Register() {
         body: JSON.stringify({ username, password, firstName, lastName }),
       });
 
-      let data = {};
-      try {
-        data = await res.json(); // Intentar obtener la respuesta JSON
-        console.log("Respuesta del servidor:", data);
-      } catch (error) {
-        console.error("Error al procesar la respuesta JSON:", error);
-        Alert.alert("Error", "Hubo un problema al procesar la respuesta del servidor.");
-        return;
-      }
+      const data = await res.json();
+      console.log("Respuesta del servidor:", data);
 
-      // Verificar si la respuesta contiene un error
       if (data.error) {
-        // Si hay un error (como el nombre de usuario ya existe), mostrar alerta
-        console.log("Error en el registro:", data.error);
-        Alert.alert("Error", data.error); // Mostrar mensaje de error
+        setErrors({ username: data.error });
+        setUsername('');
+        setPassword('');
+        setConfirmPassword('');
         return;
       }
 
-      // Si el registro fue exitoso, proceder con el login
       console.log("Registro exitoso. Iniciando sesión...");
       const loginRes = await fetch("http://192.168.0.57:8080/login", {
         method: "POST",
@@ -89,29 +85,27 @@ export default function Register() {
         body: JSON.stringify({ username, password }),
       });
 
-      let loginData = {};
-      try {
-        loginData = await loginRes.json();
-        console.log("Respuesta del login:", loginData);
-      } catch (error) {
-        console.error("Error al parsear la respuesta del login:", error);
-        Alert.alert("Error", "Hubo un problema al procesar la respuesta del login.");
-        return;
-      }
+      const loginData = await loginRes.json();
+      console.log("Respuesta del login:", loginData);
 
       if (loginRes.ok && loginData.token) {
-        console.log("Login exitoso, token recibido.");
-        // Guardar el token en AsyncStorage
         await AsyncStorage.setItem("token", loginData.token);
-        // Redirigir al usuario a la pantalla principal
         router.replace("/logueado");
       } else {
-        console.log("Error al iniciar sesión:", loginData.error);
-        Alert.alert("Error", loginData.error || "Error al iniciar sesión");
+        setErrors({ general: "Error al iniciar sesión" });
       }
+
     } catch (err) {
-      console.error("Error en la solicitud:", err);
-      Alert.alert("Error", "No se pudo conectar al servidor");
+      if (err instanceof z.ZodError) {
+        const newErrors: RegisterErrors = {};
+        err.errors.forEach(e => {
+          newErrors[e.path[0] as keyof RegisterErrors] = e.message;
+        });
+        setErrors(newErrors);
+      } else {
+        console.error(err);
+        setErrors({ general: "No se pudo conectar al servidor" });
+      }
     }
   };
 
@@ -128,32 +122,43 @@ export default function Register() {
         onChangeText={setUsername}
         autoCapitalize="none"
       />
+      {errors.username && <Text style={styles.errorText}>{errors.username}</Text>}
+
       <TextInput
         style={styles.input}
         placeholder="Contraseña"
-        secureTextEntry={true}
+        secureTextEntry
         value={password}
         onChangeText={setPassword}
       />
+      {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+
       <TextInput
         style={styles.input}
         placeholder="Repite la contraseña"
-        secureTextEntry={true}
+        secureTextEntry
         value={confirmPassword}
         onChangeText={setConfirmPassword}
       />
+      {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
+
       <TextInput
         style={styles.input}
         placeholder="Nombre"
         value={firstName}
         onChangeText={setFirstName}
       />
+      {errors.firstName && <Text style={styles.errorText}>{errors.firstName}</Text>}
+
       <TextInput
         style={styles.input}
         placeholder="Apellidos"
         value={lastName}
         onChangeText={setLastName}
       />
+      {errors.lastName && <Text style={styles.errorText}>{errors.lastName}</Text>}
+
+      {errors.general && <Text style={styles.errorText}>{errors.general}</Text>}
 
       <TouchableOpacity onPress={() => router.push("/")}>
         <Text style={styles.registerText}>¿Ya tienes cuenta? Inicia sesión</Text>
@@ -177,6 +182,7 @@ const styles = StyleSheet.create({
     paddingTop: 120,
   },
   title: {
+    marginTop: 60,
     fontSize: 70,
     fontWeight: "bold",
     color: "#34434D",
@@ -205,5 +211,13 @@ const styles = StyleSheet.create({
   },
   button: {
     alignItems: "center",
+  },
+  errorText: {
+    color: "red",
+    fontSize: 12,
+    marginTop: 5,
+    marginLeft: 40,
+    textAlign: "left",
+    width: "80%",
   },
 });

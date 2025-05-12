@@ -1,4 +1,6 @@
-import { StyleSheet, Text, TextInput, View, TouchableOpacity, Alert } from "react-native";
+// app/index.tsx - Modificado (pantalla de login)
+
+import { StyleSheet, Text, TextInput, View, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -10,13 +12,30 @@ export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<{username?: string; password?: string}>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [initialCheckDone, setInitialCheckDone] = useState(false);
 
   // Redirección automática si el token ya existe
   useEffect(() => {
     const checkLogin = async () => {
-      const token = await AsyncStorage.getItem("token");
-      if (token) {
-        router.replace("/logueado"); // Evita volver atrás
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (token) {
+          // Verificar si el onboarding está completo
+          const onboardingComplete = await AsyncStorage.getItem("onboardingComplete");
+          
+          if (onboardingComplete === "true") {
+            // Si el onboarding está completo, ir directamente al dashboard
+            router.replace("/dashboard");
+          } else {
+            // Si no está completo, ir a la pantalla intermedia
+            router.replace("/logueado");
+          }
+        }
+      } catch (error) {
+        console.error("Error al verificar login:", error);
+      } finally {
+        setInitialCheckDone(true);
       }
     };
 
@@ -49,6 +68,8 @@ export default function Login() {
     if (!validateForm()) {
       return;
     }
+    
+    setIsLoading(true);
 
     try {
       const res = await fetch("http://192.168.0.57:8080/login", {
@@ -63,66 +84,121 @@ export default function Login() {
 
       if (res.ok && data.token) {
         await AsyncStorage.setItem("token", data.token);
-        router.replace("/logueado");
+        
+        // Verificar si necesita completar onboarding
+        try {
+          const profileRes = await fetch("http://192.168.0.57:8080/user/profile", {
+            headers: {
+              "Authorization": `Bearer ${data.token}`
+            }
+          });
+          
+          if (profileRes.ok) {
+            const profileData = await profileRes.json();
+            
+            if (profileData.onboardingComplete) {
+              await AsyncStorage.setItem("onboardingComplete", "true");
+              router.replace("/dashboard");
+            } else {
+              router.replace("/logueado");
+            }
+          } else {
+            router.replace("/logueado");
+          }
+        } catch (error) {
+          console.error("Error al verificar perfil:", error);
+          router.replace("/logueado");
+        }
       } else {
         Alert.alert("Error", data.error || "Credenciales incorrectas");
       }
     } catch (err) {
       console.error(err);
       Alert.alert("Error", "No se pudo conectar al servidor");
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // Mientras se verifica el login inicial, mostrar pantalla de carga
+  if (!initialCheckDone) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Cargando...</Text>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <WaveHeader />
-      <Text style={styles.title}>Hello</Text>
-      <Text style={styles.subTitle}>Sign In to your account</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.keyboardAvoid}
+    >
+      <View style={styles.container}>
+        <WaveHeader />
+        <Text style={styles.title}>Hello</Text>
+        <Text style={styles.subTitle}>Sign In to your account</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="stayrpe@email.com"
-        value={username}
-        onChangeText={(text) => {
-          setUsername(text);
-          if (errors.username) setErrors({...errors, username: undefined});
-        }}
-        autoCapitalize="none"
-      />
-      {errors.username && <Text style={styles.errorText}>{errors.username}</Text>}
-      
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        secureTextEntry={true}
-        value={password}
-        onChangeText={(text) => {
-          setPassword(text);
-          if (errors.password) setErrors({...errors, password: undefined});
-        }}
-      />
-      {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+        <TextInput
+          style={styles.input}
+          placeholder="stayrpe@email.com"
+          value={username}
+          onChangeText={(text) => {
+            setUsername(text);
+            if (errors.username) setErrors({...errors, username: undefined});
+          }}
+          autoCapitalize="none"
+          keyboardType="email-address"
+        />
+        {errors.username && <Text style={styles.errorText}>{errors.username}</Text>}
+        
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          secureTextEntry={true}
+          value={password}
+          onChangeText={(text) => {
+            setPassword(text);
+            if (errors.password) setErrors({...errors, password: undefined});
+          }}
+        />
+        {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
 
-      <TouchableOpacity onPress={() => router.push("/register")}>
-        <Text style={styles.registerText}>¿Aún no tienes cuenta? Regístrate</Text>
-      </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.push("/register")} disabled={isLoading}>
+          <Text style={styles.registerText}>¿Aún no tienes cuenta? Regístrate</Text>
+        </TouchableOpacity>
 
-      <GradientButton
-        title="Sign In"
-        onPress={handleLogin}
-        style={{ width: "250", marginTop: 10 }}
-      />
-    </View>
+        <GradientButton
+          title={isLoading ? "Iniciando sesión..." : "Sign In"}
+          onPress={handleLogin}
+          style={{ width: 250, marginTop: 10 }}
+          disabled={isLoading}
+        />
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoid: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#f1f1f1",
     paddingTop: 120,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f1f1f1",
+  },
+  loadingText: {
+    fontSize: 16,
+    color: "#666",
   },
   title: {
     fontSize: 80,

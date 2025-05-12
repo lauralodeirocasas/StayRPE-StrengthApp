@@ -1,4 +1,6 @@
-import { StyleSheet, Text, TextInput, View, TouchableOpacity } from "react-native";
+// app/register.tsx - Modificado
+
+import { StyleSheet, Text, TextInput, View, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -45,9 +47,13 @@ export default function Register() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [errors, setErrors] = useState<RegisterErrors>({}); // Tipado explícito
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleRegister = async () => {
     try {
+      setIsLoading(true);
+      
+      // Validar formulario
       registerSchema.parse({
         username,
         password,
@@ -70,9 +76,6 @@ export default function Register() {
 
       if (data.error) {
         setErrors({ username: data.error });
-        setUsername('');
-        setPassword('');
-        setConfirmPassword('');
         return;
       }
 
@@ -106,80 +109,109 @@ export default function Register() {
         console.error(err);
         setErrors({ general: "No se pudo conectar al servidor" });
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <WaveHeader />
-      <Text style={styles.title}>¡Bienvenido!</Text>
-      <Text style={styles.subTitle}>Crea una cuenta nueva</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.keyboardAvoid}
+    >
+      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+        <WaveHeader />
+        <Text style={styles.title}>¡Bienvenido!</Text>
+        <Text style={styles.subTitle}>Crea una cuenta nueva</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Correo electrónico"
-        value={username}
-        onChangeText={setUsername}
-        autoCapitalize="none"
-      />
-      {errors.username && <Text style={styles.errorText}>{errors.username}</Text>}
+        <TextInput
+          style={styles.input}
+          placeholder="Correo electrónico"
+          value={username}
+          onChangeText={(text) => {
+            setUsername(text);
+            if (errors.username) setErrors({...errors, username: undefined});
+          }}
+          autoCapitalize="none"
+          keyboardType="email-address"
+        />
+        {errors.username && <Text style={styles.errorText}>{errors.username}</Text>}
 
-      <TextInput
-        style={styles.input}
-        placeholder="Contraseña"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-      {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+        <TextInput
+          style={styles.input}
+          placeholder="Nombre"
+          value={firstName}
+          onChangeText={(text) => {
+            setFirstName(text);
+            if (errors.firstName) setErrors({...errors, firstName: undefined});
+          }}
+        />
+        {errors.firstName && <Text style={styles.errorText}>{errors.firstName}</Text>}
 
-      <TextInput
-        style={styles.input}
-        placeholder="Repite la contraseña"
-        secureTextEntry
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-      />
-      {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
+        <TextInput
+          style={styles.input}
+          placeholder="Apellidos"
+          value={lastName}
+          onChangeText={(text) => {
+            setLastName(text);
+            if (errors.lastName) setErrors({...errors, lastName: undefined});
+          }}
+        />
+        {errors.lastName && <Text style={styles.errorText}>{errors.lastName}</Text>}
 
-      <TextInput
-        style={styles.input}
-        placeholder="Nombre"
-        value={firstName}
-        onChangeText={setFirstName}
-      />
-      {errors.firstName && <Text style={styles.errorText}>{errors.firstName}</Text>}
+        <TextInput
+          style={styles.input}
+          placeholder="Contraseña"
+          secureTextEntry
+          value={password}
+          onChangeText={(text) => {
+            setPassword(text);
+            if (errors.password) setErrors({...errors, password: undefined});
+          }}
+        />
+        {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
 
-      <TextInput
-        style={styles.input}
-        placeholder="Apellidos"
-        value={lastName}
-        onChangeText={setLastName}
-      />
-      {errors.lastName && <Text style={styles.errorText}>{errors.lastName}</Text>}
+        <TextInput
+          style={styles.input}
+          placeholder="Repite la contraseña"
+          secureTextEntry
+          value={confirmPassword}
+          onChangeText={(text) => {
+            setConfirmPassword(text);
+            if (errors.confirmPassword) setErrors({...errors, confirmPassword: undefined});
+          }}
+        />
+        {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
 
-      {errors.general && <Text style={styles.errorText}>{errors.general}</Text>}
+        {errors.general && <Text style={styles.errorText}>{errors.general}</Text>}
 
-      <TouchableOpacity onPress={() => router.push("/")}>
-        <Text style={styles.registerText}>¿Ya tienes cuenta? Inicia sesión</Text>
-      </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.push("/")} disabled={isLoading}>
+          <Text style={styles.registerText}>¿Ya tienes cuenta? Inicia sesión</Text>
+        </TouchableOpacity>
 
-      <GradientButton
-        title="Registrarme"
-        onPress={handleRegister}
-        style={{ width: "250", marginTop: 10 }}
-      />
-    </View>
+        <GradientButton
+          title={isLoading ? "Registrando..." : "Registrarme"}
+          onPress={handleRegister}
+          style={{ width: 250, marginTop: 10 }}
+          disabled={isLoading}
+        />
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoid: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
     backgroundColor: "#f1f1f1",
+  },
+  contentContainer: {
+    alignItems: "center",
     paddingTop: 120,
+    paddingBottom: 40,
   },
   title: {
     marginTop: 60,
@@ -192,6 +224,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: "gray",
     textAlign: "center",
+    marginBottom: 20,
   },
   input: {
     paddingStart: 30,

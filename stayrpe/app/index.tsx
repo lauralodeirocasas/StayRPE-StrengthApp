@@ -1,5 +1,3 @@
-// app/index.tsx - Modificado (pantalla de login)
-
 import { StyleSheet, Text, TextInput, View, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useState, useEffect } from "react";
@@ -26,7 +24,7 @@ export default function Login() {
           
           if (onboardingComplete === "true") {
             // Si el onboarding está completo, ir directamente al dashboard
-            router.replace("/dashboard");
+            router.replace("/(tabs)");
           } else {
             // Si no está completo, ir a la pantalla intermedia
             router.replace("/logueado");
@@ -98,7 +96,7 @@ export default function Login() {
             
             if (profileData.onboardingComplete) {
               await AsyncStorage.setItem("onboardingComplete", "true");
-              router.replace("/dashboard");
+              router.replace("/(tabs)");
             } else {
               router.replace("/logueado");
             }
@@ -172,7 +170,6 @@ export default function Login() {
           title={isLoading ? "Iniciando sesión..." : "Sign In"}
           onPress={handleLogin}
           style={{ width: 250, marginTop: 10 }}
-          disabled={isLoading}
         />
       </View>
     </KeyboardAvoidingView>

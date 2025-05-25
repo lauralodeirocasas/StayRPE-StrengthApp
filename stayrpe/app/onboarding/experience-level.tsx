@@ -1,3 +1,5 @@
+
+// ==================== EXPERIENCE LEVEL SCREEN ====================
 // app/onboarding/experience-level.tsx
 
 import { useState } from "react";
@@ -12,7 +14,6 @@ import {
   Alert 
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import GradientButton from "../../components/GradientButton";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type Experience = "beginner" | "intermediate" | "advanced";
@@ -24,6 +25,7 @@ export default function ExperienceLevelScreen() {
     height: string; 
     weight: string;
     goal: string;
+    sex: string;
   }>();
   
   const [selectedLevel, setSelectedLevel] = useState<Experience | null>(null);
@@ -53,7 +55,6 @@ export default function ExperienceLevelScreen() {
     setIsLoading(true);
     
     try {
-      // Obtener el token de autenticación
       const token = await AsyncStorage.getItem("token");
       
       if (!token) {
@@ -62,18 +63,17 @@ export default function ExperienceLevelScreen() {
         return;
       }
       
-      // Preparar los datos para el perfil
       const profileData = {
         age: parseInt(params.age || "0"),
         height: parseInt(params.height || "0"),
         weight: parseInt(params.weight || "0"),
+        sex: params.sex || "",
         fitnessGoal: params.goal,
         experienceLevel: selectedLevel
       };
       
       console.log("Enviando datos de perfil:", profileData);
       
-      // Enviar los datos al backend
       const response = await fetch("http://192.168.0.57:8080/user/profile", {
         method: "POST",
         headers: {
@@ -87,12 +87,8 @@ export default function ExperienceLevelScreen() {
       
       if (response.ok) {
         console.log("Perfil guardado exitosamente:", data);
-        
-        // Marcar que el onboarding está completo
         await AsyncStorage.setItem("onboardingComplete", "true");
-        
-        // Redirigir al dashboard
-        router.replace("/dashboard");
+        router.replace("/(tabs)");
       } else {
         console.error("Error al guardar perfil:", data);
         Alert.alert("Error", data.error || "Hubo un problema al guardar tu perfil. Inténtalo de nuevo.");
@@ -109,31 +105,31 @@ export default function ExperienceLevelScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.content}>
-          <Text style={styles.title}>Nivel de Experiencia</Text>
+    <SafeAreaView style={experienceStyles.container}>
+      <ScrollView contentContainerStyle={experienceStyles.scrollContent}>
+        <View style={experienceStyles.content}>
+          <Text style={experienceStyles.title}>Nivel de Experiencia</Text>
           
-          <Text style={styles.description}>
+          <Text style={experienceStyles.description}>
             ¿Cuál es tu nivel de experiencia en entrenamiento?
           </Text>
 
-          <View style={styles.levelsContainer}>
+          <View style={experienceStyles.levelsContainer}>
             {experienceLevels.map((level) => (
               <TouchableOpacity
                 key={level.id}
                 style={[
-                  styles.levelCard,
-                  selectedLevel === level.id && styles.selectedLevel,
+                  experienceStyles.levelCard,
+                  selectedLevel === level.id && experienceStyles.selectedLevel,
                 ]}
                 onPress={() => setSelectedLevel(level.id as Experience)}
                 activeOpacity={0.7}
                 disabled={isLoading}
               >
-                <Text style={[styles.levelLabel, selectedLevel === level.id && styles.selectedText]}>
+                <Text style={[experienceStyles.levelLabel, selectedLevel === level.id && experienceStyles.selectedText]}>
                   {level.label}
                 </Text>
-                <Text style={styles.levelDescription}>
+                <Text style={[experienceStyles.levelDescription, selectedLevel === level.id && experienceStyles.selectedDescriptionText]}>
                   {level.description}
                 </Text>
               </TouchableOpacity>
@@ -141,20 +137,22 @@ export default function ExperienceLevelScreen() {
           </View>
 
           {isLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#3366cc" />
-              <Text style={styles.loadingText}>Guardando tu perfil...</Text>
+            <View style={experienceStyles.loadingContainer}>
+              <ActivityIndicator size="large" color="#5E4B8B" />
+              <Text style={experienceStyles.loadingText}>Guardando tu perfil...</Text>
             </View>
           ) : (
-            <GradientButton
-              title="Finalizar"
-              onPress={handleFinish}
-              disabled={!selectedLevel}
+            <TouchableOpacity
               style={[
-                styles.button,
+                experienceStyles.button,
                 { opacity: selectedLevel ? 1 : 0.5 }
               ]}
-            />
+              onPress={handleFinish}
+              disabled={!selectedLevel}
+              activeOpacity={0.8}
+            >
+              <Text style={experienceStyles.buttonText}>Finalizar</Text>
+            </TouchableOpacity>
           )}
         </View>
       </ScrollView>
@@ -162,10 +160,10 @@ export default function ExperienceLevelScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const experienceStyles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f1f1f1",
+    backgroundColor: "#f7f5fc",
   },
   scrollContent: {
     flexGrow: 1,
@@ -175,49 +173,58 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#34434D",
+    fontSize: 26,
+    fontWeight: "700",
+    color: "#5E4B8B",
     marginTop: 20,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   description: {
     fontSize: 16,
-    color: "#666",
+    color: "#7D7A8C",
     marginBottom: 30,
   },
   levelsContainer: {
     marginBottom: 30,
   },
   levelCard: {
-    backgroundColor: "#fff",
+    backgroundColor: "#F3F0FF",
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 16,
     marginBottom: 15,
-    borderWidth: 2,
-    borderColor: "transparent",
-    shadowColor: "#000",
+    borderWidth: 1.5,
+    borderColor: "#DCD6F7",
+    shadowColor: "#B793F6",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.15,
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 3,
   },
   selectedLevel: {
-    borderColor: "#3366cc",
-    backgroundColor: "#e6efff",
+    backgroundColor: "#5E4B8B",
+    borderColor: "#5936A2",
+    shadowColor: "#5936A2",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
   },
   levelLabel: {
     fontSize: 18,
-    fontWeight: "bold",
-    color: "#34434D",
-    marginBottom: 5,
+    fontWeight: "700",
+    color: "#5E4B8B",
+    marginBottom: 8,
   },
   levelDescription: {
     fontSize: 14,
-    color: "#666",
+    color: "#7D7A8C",
+    lineHeight: 20,
   },
   selectedText: {
-    color: "#3366cc",
+    color: "#fff",
+  },
+  selectedDescriptionText: {
+    color: "#E6E1FF",
   },
   loadingContainer: {
     alignItems: "center",
@@ -226,10 +233,24 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: "#666",
+    color: "#7D7A8C",
   },
   button: {
     width: "100%",
-    marginBottom: 20,
+    backgroundColor: "#5E4B8B",
+    paddingVertical: 16,
+    borderRadius: 30,
+    alignItems: "center",
+    shadowColor: "#8B63D7",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  buttonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 18,
+    letterSpacing: 1,
   },
 });

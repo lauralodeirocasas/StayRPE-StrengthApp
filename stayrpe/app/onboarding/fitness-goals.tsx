@@ -1,32 +1,29 @@
-// app/onboarding/fitness-goals.tsx
-
 import { useState } from "react";
 import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, ScrollView } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import GradientButton from "../../components/GradientButton";
 
 type Goal = "lose_weight" | "gain_muscle" | "improve_fitness" | "maintain";
 
 export default function FitnessGoalsScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{age: string; height: string; weight: string}>();
+  const params = useLocalSearchParams<{age: string; height: string; weight: string; sex: string}>();
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
 
   const goals = [
     { 
       id: "lose_weight", 
-      label: "Perder peso", 
+      label: "Perder grasa", 
       description: "Reducir grasa corporal y mejorar composición corporal" 
     },
     { 
       id: "gain_muscle", 
       label: "Ganar músculo", 
-      description: "Aumentar masa muscular y fuerza" 
+      description: "Aumentar masa muscular y llevar tu físico a otro nivel" 
     },
     { 
       id: "improve_fitness", 
-      label: "Mejorar condición física", 
-      description: "Incrementar resistencia, flexibilidad y rendimiento general" 
+      label: "Ganar fuerza", 
+      description: "Incrementar tu fuerza y levantar más peso" 
     },
     { 
       id: "maintain", 
@@ -48,55 +45,57 @@ export default function FitnessGoalsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.content}>
-          <Text style={styles.title}>Objetivos de Fitness</Text>
+    <SafeAreaView style={fitnessStyles.container}>
+      <ScrollView contentContainerStyle={fitnessStyles.scrollContent}>
+        <View style={fitnessStyles.content}>
+          <Text style={fitnessStyles.title}>Seleccione su principal objetivo</Text>
           
-          <Text style={styles.description}>
-            ¿Cuál es tu principal objetivo de fitness?
+          <Text style={fitnessStyles.description}>
+            ¿Cuál es tu principal objetivo  fitness?
           </Text>
 
-          <View style={styles.goalsContainer}>
+          <View style={fitnessStyles.goalsContainer}>
             {goals.map((goal) => (
               <TouchableOpacity
                 key={goal.id}
                 style={[
-                  styles.goalCard,
-                  selectedGoal === goal.id && styles.selectedGoal,
+                  fitnessStyles.goalCard,
+                  selectedGoal === goal.id && fitnessStyles.selectedGoal,
                 ]}
                 onPress={() => setSelectedGoal(goal.id as Goal)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.goalLabel, selectedGoal === goal.id && styles.selectedText]}>
+                <Text style={[fitnessStyles.goalLabel, selectedGoal === goal.id && fitnessStyles.selectedText]}>
                   {goal.label}
                 </Text>
-                <Text style={styles.goalDescription}>
+                <Text style={[fitnessStyles.goalDescription, selectedGoal === goal.id && fitnessStyles.selectedDescriptionText]}>
                   {goal.description}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <GradientButton
-            title="Continuar"
-            onPress={handleContinue}
-            disabled={!selectedGoal}
+          <TouchableOpacity
             style={[
-              styles.button,
+              fitnessStyles.button,
               { opacity: selectedGoal ? 1 : 0.5 }
             ]}
-          />
+            onPress={handleContinue}
+            disabled={!selectedGoal}
+            activeOpacity={0.8}
+          >
+            <Text style={fitnessStyles.buttonText}>Continuar</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const fitnessStyles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f1f1f1",
+    backgroundColor: "#f7f5fc",
   },
   scrollContent: {
     flexGrow: 1,
@@ -106,53 +105,76 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#34434D",
+    fontSize: 26,
+    fontWeight: "700",
+    color: "#5E4B8B",
     marginTop: 20,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   description: {
     fontSize: 16,
-    color: "#666",
+    color: "#7D7A8C",
     marginBottom: 30,
   },
   goalsContainer: {
     marginBottom: 30,
   },
   goalCard: {
-    backgroundColor: "#fff",
+    backgroundColor: "#F3F0FF",
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 16,
     marginBottom: 15,
-    borderWidth: 2,
-    borderColor: "transparent",
-    shadowColor: "#000",
+    borderWidth: 1.5,
+    borderColor: "#DCD6F7",
+    shadowColor: "#B793F6",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.15,
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 3,
   },
   selectedGoal: {
-    borderColor: "#3366cc",
-    backgroundColor: "#e6efff",
+    backgroundColor: "#5E4B8B",
+    borderColor: "#5936A2",
+    shadowColor: "#5936A2",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
   },
   goalLabel: {
     fontSize: 18,
-    fontWeight: "bold",
-    color: "#34434D",
-    marginBottom: 5,
+    fontWeight: "700",
+    color: "#5E4B8B",
+    marginBottom: 8,
   },
   goalDescription: {
     fontSize: 14,
-    color: "#666",
+    color: "#7D7A8C",
+    lineHeight: 20,
   },
   selectedText: {
-    color: "#3366cc",
+    color: "#fff9db",
+  },
+  selectedDescriptionText: {
+    color: "#E6E1FF",
   },
   button: {
     width: "100%",
+    backgroundColor: "#5E4B8B",
+    paddingVertical: 16,
+    borderRadius: 30,
+    alignItems: "center",
+    shadowColor: "#8B63D7",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 8,
     marginTop: 20,
-    marginBottom: 20,
+  },
+  buttonText: {
+    color: "#fff9db",
+    fontWeight: "700",
+    fontSize: 18,
+    letterSpacing: 1,
   },
 });

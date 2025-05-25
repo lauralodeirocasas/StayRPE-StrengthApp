@@ -4,8 +4,29 @@ import { HelloWave } from '@/components/HelloWave';
 import ParallaxScrollView from '@/components/ParallaxScrollView';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
+import GradientButton from '@/components/GradientButton';
+
+
+
 
 export default function HomeScreen() {
+const router = useRouter();
+
+
+const handleLogout = async () => {
+  await AsyncStorage.removeItem("token");
+  await AsyncStorage.removeItem("onboardingComplete"); // Limpias también onboarding
+  router.replace("/register");
+};
+
+  
+
+
+
+
+
   return (
     <ParallaxScrollView
       headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
@@ -50,6 +71,10 @@ export default function HomeScreen() {
           <ThemedText type="defaultSemiBold">app-example</ThemedText>.
         </ThemedText>
       </ThemedView>
+      <GradientButton
+              title="Cerrar sesión"
+              onPress={handleLogout}
+            />
     </ParallaxScrollView>
   );
 }

@@ -1,27 +1,42 @@
-// app/onboarding/personal-data.tsx
-
 import { useState } from "react";
-import { StyleSheet, Text, View, TextInput, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { 
+  StyleSheet, 
+  Text, 
+  View, 
+  TextInput, 
+  SafeAreaView, 
+  KeyboardAvoidingView, 
+  Platform, 
+  ScrollView, 
+  TouchableOpacity 
+} from "react-native";
 import { useRouter } from "expo-router";
-import GradientButton from "../../components/GradientButton";
+
+type SexOption = "male" | "female" | "other";
+
+type Errors = {
+  age?: string;
+  height?: string;
+  weight?: string;
+  sex?: string;
+};
+
+const SEX_OPTIONS = [
+  { label: "Masculino", value: "male" as SexOption },
+  { label: "Femenino", value: "female" as SexOption },
+  { label: "Otro", value: "other" as SexOption },
+];
 
 export default function PersonalDataScreen() {
   const router = useRouter();
   const [age, setAge] = useState("");
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
-  const [errors, setErrors] = useState<{
-    age?: string;
-    height?: string;
-    weight?: string;
-  }>({});
+  const [sex, setSex] = useState<SexOption | "">("");
+  const [errors, setErrors] = useState<Errors>({});
 
-  const validateForm = () => {
-    const newErrors: {
-      age?: string;
-      height?: string;
-      weight?: string;
-    } = {};
+  const validateForm = (): boolean => {
+    const newErrors: Errors = {};
     let isValid = true;
 
     // Validar edad
@@ -51,15 +66,27 @@ export default function PersonalDataScreen() {
       isValid = false;
     }
 
+    // Validar sexo
+    if (!sex) {
+      newErrors.sex = "El sexo es obligatorio";
+      isValid = false;
+    }
+
     setErrors(newErrors);
     return isValid;
+  };
+
+  const clearError = (field: keyof Errors) => {
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: undefined }));
+    }
   };
 
   const handleContinue = () => {
     if (validateForm()) {
       router.push({
         pathname: "/onboarding/fitness-goals",
-        params: { age, height, weight }
+        params: { age, height, weight, sex },
       });
     }
   };
@@ -79,6 +106,7 @@ export default function PersonalDataScreen() {
             </Text>
 
             <View style={styles.formContainer}>
+              {/* Edad */}
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Edad</Text>
                 <TextInput
@@ -88,14 +116,13 @@ export default function PersonalDataScreen() {
                   value={age}
                   onChangeText={(text) => {
                     setAge(text);
-                    if (errors.age) {
-                      setErrors({ ...errors, age: undefined });
-                    }
+                    clearError('age');
                   }}
                 />
                 {errors.age && <Text style={styles.errorText}>{errors.age}</Text>}
               </View>
 
+              {/* Altura */}
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Altura</Text>
                 <TextInput
@@ -105,14 +132,13 @@ export default function PersonalDataScreen() {
                   value={height}
                   onChangeText={(text) => {
                     setHeight(text);
-                    if (errors.height) {
-                      setErrors({ ...errors, height: undefined });
-                    }
+                    clearError('height');
                   }}
                 />
                 {errors.height && <Text style={styles.errorText}>{errors.height}</Text>}
               </View>
 
+              {/* Peso */}
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Peso</Text>
                 <TextInput
@@ -122,20 +148,51 @@ export default function PersonalDataScreen() {
                   value={weight}
                   onChangeText={(text) => {
                     setWeight(text);
-                    if (errors.weight) {
-                      setErrors({ ...errors, weight: undefined });
-                    }
+                    clearError('weight');
                   }}
                 />
                 {errors.weight && <Text style={styles.errorText}>{errors.weight}</Text>}
               </View>
+
+              {/* Sexo */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Sexo</Text>
+                <View style={styles.sexOptionsContainer}>
+                  {SEX_OPTIONS.map(({ label, value }) => (
+                    <TouchableOpacity
+                      key={value}
+                      style={[
+                        styles.sexOption,
+                        sex === value && styles.sexOptionSelected,
+                      ]}
+                      onPress={() => {
+                        setSex(value);
+                        clearError('sex');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.sexOptionText,
+                          sex === value && styles.sexOptionTextSelected,
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {errors.sex && <Text style={styles.errorText}>{errors.sex}</Text>}
+              </View>
             </View>
 
-            <GradientButton
-              title="Continuar"
-              onPress={handleContinue}
-              style={styles.button}
-            />
+            <TouchableOpacity 
+              style={styles.button} 
+              onPress={handleContinue} 
+              activeOpacity={0.8}
+            >
+              <Text style={styles.buttonText}>Continuar</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -144,30 +201,30 @@ export default function PersonalDataScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f1f1f1",
+  container: { 
+    flex: 1, 
+    backgroundColor: "#f7f5fc" 
   },
-  keyboardAvoid: {
-    flex: 1,
+  keyboardAvoid: { 
+    flex: 1 
   },
-  scrollContent: {
-    flexGrow: 1,
+  scrollContent: { 
+    flexGrow: 1 
   },
-  content: {
-    flex: 1,
-    padding: 20,
+  content: { 
+    flex: 1, 
+    padding: 20 
   },
   title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#34434D",
+    fontSize: 26,
+    fontWeight: "700",
+    color: "#5E4B8B",
     marginTop: 20,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   description: {
     fontSize: 16,
-    color: "#666",
+    color: "#7D7A8C",
     marginBottom: 30,
   },
   formContainer: {
@@ -178,23 +235,75 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 16,
-    color: "#34434D",
+    color: "#5E4B8B",
     marginBottom: 8,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   input: {
     backgroundColor: "#fff",
     padding: 15,
-    borderRadius: 10,
+    borderRadius: 12,
     fontSize: 16,
+    shadowColor: "#B793F6",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  sexOptionsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 5,
+  },
+  sexOption: {
+    flex: 1,
+    paddingVertical: 14,
+    marginHorizontal: 6,
+    borderRadius: 25,
+    borderWidth: 1.5,
+    borderColor: "#DCD6F7",
+    alignItems: "center",
+    backgroundColor: "#F3F0FF",
+  },
+  sexOptionSelected: {
+    backgroundColor: "#5E4B8B",
+    borderColor: "#5936A2",
+    shadowColor: "#5936A2",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  sexOptionText: {
+    fontSize: 16,
+    color: "#7D7A8C",
+    fontWeight: "600",
+  },
+  sexOptionTextSelected: {
+    color: "#fff9db",
+    fontWeight: "700",
   },
   errorText: {
-    color: "red",
+    color: "#E94F37",
     fontSize: 12,
     marginTop: 5,
   },
   button: {
     width: "100%",
-    marginTop: 20,
+    backgroundColor: "#5E4B8B",
+    paddingVertical: 16,
+    borderRadius: 30,
+    alignItems: "center",
+    shadowColor: "#8B63D7",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  buttonText: {
+    color: "#fff9db",
+    fontWeight: "700",
+    fontSize: 18,
+    letterSpacing: 1,
   },
 });

@@ -1,3 +1,4 @@
+// src/main/java/com/example/demo/model/Usuario.java
 package com.example.demo.model;
 
 import jakarta.persistence.*;
@@ -21,6 +22,13 @@ public class Usuario {
 
     @Column(nullable = false)
     private String password;
+
+    // Nuevos campos personales
+    @Column
+    private String firstName;
+
+    @Column
+    private String lastName;
 
     private boolean enabled = true;
 

@@ -1,0 +1,1709 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Modal,
+  SafeAreaView,
+  Dimensions
+} from 'react-native';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+
+const { width } = Dimensions.get('window');
+
+interface Exercise {
+  id: number;
+  name: string;
+  muscle: string;
+  isCustom?: boolean;
+  custom?: boolean;
+  createdByUsername?: string;
+}
+
+interface SelectedExercise {
+  exerciseId: number;
+  exerciseName: string;
+  exerciseMuscle: string;
+  order: number;
+  numberOfSets: number;
+  restBetweenSets: number;
+  notes: string;
+  intensityType: 'RIR' | 'RPE';
+  sets: SetData[];
+  tempId?: string;
+  id?: number; // Para rutinas existentes
+}
+
+interface SetData {
+  setNumber: number;
+  targetRepsMin: number;
+  targetRepsMax: number;
+  targetWeight: number;
+  intensity: number;
+  notes: string;
+  id?: number; // Para sets existentes
+}
+
+interface RoutineData {
+  id: number;
+  name: string;
+  description: string;
+  exercises: Array<{
+    id: number;
+    exerciseId: number;
+    exerciseName: string;
+    exerciseMuscle: string;
+    order: number;
+    numberOfSets: number;
+    restBetweenSets: number;
+    notes: string;
+    sets: Array<{
+      id: number;
+      setNumber: number;
+      targetRepsMin: number;
+      targetRepsMax: number;
+      targetWeight: number;
+      rir: number;
+      rpe: number;
+      notes: string;
+    }>;
+  }>;
+}
+
+const CreateRoutineScreen = () => {
+  const router = useRouter();
+  const params = useLocalSearchParams();
+  
+  // Estados básicos
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [selectedExercises, setSelectedExercises] = useState<SelectedExercise[]>([]);
+  
+  // Estados para modales
+  const [showExerciseModal, setShowExerciseModal] = useState(false);
+  const [editingExercise, setEditingExercise] = useState<SelectedExercise | null>(null);
+  const [showSetEditor, setShowSetEditor] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  
+  // Estados para filtros
+  const [selectedMuscleFilter, setSelectedMuscleFilter] = useState<string>('all');
+  const [selectedExerciseType, setSelectedExerciseType] = useState<'predefined' | 'custom'>('predefined');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  
+  // Estados para edición
+  const [isEditing, setIsEditing] = useState(false);
+  const [routineId, setRoutineId] = useState<number | null>(null);
+
+  const API_URL = 'http://192.168.0.57:8080';
+
+  const muscleFilters = [
+    { value: 'all', label: 'Todos' },
+    { value: 'Pecho', label: 'Pecho'},
+    { value: 'Dorsales', label: 'Dorsales' },
+    { value: 'Cuádriceps', label: 'Cuádriceps' },
+    { value: 'Isquiotibiales', label: 'Isquiotibiales'},
+    { value: 'Glúteos', label: 'Glúteos' },
+    { value: 'Gemelos', label: 'Gemelos' },
+    { value: 'Hombros', label: 'Hombros' },
+    { value: 'Biceps', label: 'Biceps' },
+    { value: 'Triceps', label: 'Triceps' },
+    { value: 'Core', label: 'Core' },
+  ];
+
+  useEffect(() => {
+    const initializeData = async () => {
+      try {
+        const storedToken = await AsyncStorage.getItem("token");
+        setToken(storedToken);
+        
+        // Verificar si es modo edición
+        if (params.isEditing === 'true' && params.routineData && params.routineId) {
+          setIsEditing(true);
+          setRoutineId(parseInt(params.routineId as string));
+          const routineData: RoutineData = JSON.parse(params.routineData as string);
+          loadRoutineDataForEdit(routineData);
+        }
+        
+        if (storedToken) {
+          loadExercises(storedToken);
+        }
+      } catch (error) {
+        console.error('Error inicializando datos:', error);
+      }
+    };
+    initializeData();
+  }, []);
+
+  const loadRoutineDataForEdit = (routineData: RoutineData) => {
+    console.log('📋 Cargando datos de rutina para edición en create:', routineData);
+    
+    setName(routineData.name);
+    setDescription(routineData.description || '');
+    
+    const convertedExercises: SelectedExercise[] = routineData.exercises.map((exercise) => {
+      const hasRir = exercise.sets.some(set => set.rir > 0);
+      const intensityType: 'RIR' | 'RPE' = hasRir ? 'RIR' : 'RPE';
+      
+      return {
+        exerciseId: exercise.exerciseId,
+        exerciseName: exercise.exerciseName,
+        exerciseMuscle: exercise.exerciseMuscle,
+        order: exercise.order,
+        numberOfSets: exercise.numberOfSets,
+        restBetweenSets: exercise.restBetweenSets || 90,
+        notes: exercise.notes || '',
+        intensityType: intensityType,
+        id: exercise.id,
+        sets: exercise.sets.map(set => ({
+          setNumber: set.setNumber,
+          targetRepsMin: set.targetRepsMin,
+          targetRepsMax: set.targetRepsMax,
+          targetWeight: set.targetWeight,
+          intensity: intensityType === 'RIR' ? set.rir : set.rpe,
+          notes: set.notes || '',
+          id: set.id
+        }))
+      };
+    });
+    
+    setSelectedExercises(convertedExercises);
+    console.log('✅ Ejercicios convertidos para edición:', convertedExercises.length);
+  };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (token) {
+        loadExercises(token);
+      }
+    }, [token])
+  );
+
+  const loadExercises = async (authToken: string) => {
+    try {
+      const response = await fetch(`${API_URL}/exercises`, {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+
+      // VERIFICACIÓN TOKEN EXPIRADO
+      if (response.status === 401) {
+        await AsyncStorage.removeItem("token");
+        await AsyncStorage.removeItem("onboardingComplete");
+        Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
+          { text: "OK", onPress: () => router.replace("/") }
+        ]);
+        return;
+      }
+
+      if (response.ok) {
+        const data = await response.json();
+        setExercises(data);
+      }
+    } catch (error) {
+      console.error('Error cargando ejercicios:', error);
+    }
+  };
+
+  const getFilteredExercises = () => {
+    let filtered = exercises;
+    if (selectedExerciseType === 'predefined') {
+      filtered = filtered.filter(exercise => !exercise.isCustom && !exercise.custom);
+    } else {
+      filtered = filtered.filter(exercise => exercise.isCustom === true || exercise.custom === true);
+    }
+    if (selectedMuscleFilter !== 'all') {
+      filtered = filtered.filter(exercise => exercise.muscle === selectedMuscleFilter);
+    }
+    if (searchQuery.trim() !== '') {
+      filtered = filtered.filter(exercise =>
+        exercise.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
+      );
+    }
+    return filtered;
+  };
+
+  const addExercise = (exercise: Exercise) => {
+    const tempId = `temp_${Date.now()}_${exercise.id}`;
+    const newExercise: SelectedExercise = {
+      exerciseId: exercise.id,
+      exerciseName: exercise.name,
+      exerciseMuscle: exercise.muscle,
+      order: selectedExercises.length + 1,
+      numberOfSets: 3,
+      restBetweenSets: 90,
+      notes: '',
+      intensityType: 'RIR',
+      tempId: tempId,
+      sets: [
+        { setNumber: 1, targetRepsMin: 8, targetRepsMax: 12, targetWeight: 20.0, intensity: 2, notes: '' },
+        { setNumber: 2, targetRepsMin: 8, targetRepsMax: 12, targetWeight: 22.5, intensity: 1, notes: '' },
+        { setNumber: 3, targetRepsMin: 8, targetRepsMax: 12, targetWeight: 25.0, intensity: 0, notes: '' }
+      ]
+    };
+    const newSelectedExercises = [...selectedExercises, newExercise];
+    setSelectedExercises(newSelectedExercises);
+    setShowExerciseModal(false);
+    setEditingExercise(newExercise);
+    setEditingIndex(newSelectedExercises.length - 1);
+    setShowSetEditor(true);
+  };
+
+  const removeExercise = (index: number) => {
+    const newSelected = selectedExercises.filter((_, i) => i !== index);
+    const reordered = newSelected.map((ex, i) => ({ ...ex, order: i + 1 }));
+    setSelectedExercises(reordered);
+  };
+
+  const editExercise = (index: number) => {
+    setEditingExercise({ ...selectedExercises[index] });
+    setEditingIndex(index);
+    setShowSetEditor(true);
+  };
+
+  const updateExercise = (updatedExercise: SelectedExercise) => {
+    if (editingIndex !== null) {
+      const newExercises = [...selectedExercises];
+      const { tempId, ...exerciseWithoutTempId } = updatedExercise;
+      newExercises[editingIndex] = exerciseWithoutTempId;
+      setSelectedExercises(newExercises);
+    }
+    setShowSetEditor(false);
+    setEditingExercise(null);
+    setEditingIndex(null);
+  };
+
+  const addSetToExercise = () => {
+    if (!editingExercise) return;
+    const newSet: SetData = {
+      setNumber: editingExercise.sets.length + 1,
+      targetRepsMin: 8,
+      targetRepsMax: 12,
+      targetWeight: 20.0,
+      intensity: editingExercise.intensityType === 'RIR' ? 2 : 8,
+      notes: ''
+    };
+    setEditingExercise({
+      ...editingExercise,
+      sets: [...editingExercise.sets, newSet],
+      numberOfSets: editingExercise.sets.length + 1
+    });
+  };
+
+  const removeSetFromExercise = (setIndex: number) => {
+    if (!editingExercise || editingExercise.sets.length <= 1) return;
+    const newSets = editingExercise.sets
+      .filter((_, i) => i !== setIndex)
+      .map((set, i) => ({ ...set, setNumber: i + 1 }));
+    setEditingExercise({
+      ...editingExercise,
+      sets: newSets,
+      numberOfSets: newSets.length
+    });
+  };
+
+  const updateSet = (setIndex: number, field: keyof SetData, value: any) => {
+    if (!editingExercise) return;
+    const newSets = [...editingExercise.sets];
+    newSets[setIndex] = { ...newSets[setIndex], [field]: value };
+    setEditingExercise({ ...editingExercise, sets: newSets });
+  };
+
+  const toggleIntensityType = () => {
+    if (!editingExercise) return;
+    const newType = editingExercise.intensityType === 'RIR' ? 'RPE' : 'RIR';
+    const newSets = editingExercise.sets.map(set => ({
+      ...set,
+      intensity: newType === 'RIR' ? 2 : 8
+    }));
+    setEditingExercise({
+      ...editingExercise,
+      intensityType: newType,
+      sets: newSets
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (!token || !name.trim() || selectedExercises.length === 0) {
+      Alert.alert('Error', 'Completa todos los campos obligatorios');
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      const routineData = {
+        name: name.trim(),
+        description: description.trim(),
+        exercises: selectedExercises.map(exercise => {
+          const { tempId, id, ...exerciseData } = exercise;
+          return {
+            ...exerciseData,
+            sets: exercise.sets.map(set => {
+              const { id: setId, ...setData } = set;
+              return {
+                ...setData,
+                rir: exercise.intensityType === 'RIR' ? set.intensity : 0,
+                rpe: exercise.intensityType === 'RPE' ? set.intensity : 0
+              };
+            })
+          };
+        })
+      };
+
+      let response;
+      let successMessage;
+
+      if (isEditing && routineId) {
+        // Actualizar rutina existente
+        response = await fetch(`${API_URL}/routines/${routineId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(routineData)
+        });
+        successMessage = 'Rutina actualizada';
+      } else {
+        // Crear nueva rutina
+        response = await fetch(`${API_URL}/routines`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(routineData)
+        });
+        successMessage = 'Rutina creada';
+      }
+
+      // VERIFICACIÓN TOKEN EXPIRADO
+      if (response.status === 401) {
+        await AsyncStorage.removeItem("token");
+        await AsyncStorage.removeItem("onboardingComplete");
+        Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
+          { text: "OK", onPress: () => router.replace("/") }
+        ]);
+        return;
+      }
+
+      const data = await response.json();
+      if (response.ok) {
+        Alert.alert(successMessage, `"${data.name}" se ha ${isEditing ? 'actualizado' : 'creado'} correctamente`, [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
+      } else {
+        Alert.alert('Error', data.error || `Error al ${isEditing ? 'actualizar' : 'crear'} rutina`);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo conectar con el servidor');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!token) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#5E4B8B" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const filteredExercises = getFilteredExercises();
+
+  return (
+    <View style={styles.container}>
+      {/* Header modificado para mostrar si es edición */}
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={24} color="#1F2937" />
+          </TouchableOpacity>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>
+              {isEditing ? 'Editar Rutina' : 'Nueva Rutina'}
+            </Text>
+            <Text style={styles.headerSubtitle}>
+              {isEditing ? 'Modifica tu entrenamiento' : 'Crea tu entrenamiento personalizado'}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Formulario con diseño moderno */}
+        <View style={styles.formCard}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Nombre de la rutina</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                value={name}
+                onChangeText={setName}
+                placeholder="Ej. Push Pull Legs"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Descripción</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Describe tu rutina (opcional)"
+                placeholderTextColor="#9CA3AF"
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* Sección de ejercicios con diseño moderno */}
+        <View style={styles.exercisesCard}>
+          <View style={styles.cardHeader}>
+            <View style={styles.headerLeft}>
+              <View style={styles.iconContainer}>
+                <Ionicons name="barbell" size={20} color="#5E4B8B" />
+              </View>
+              <View>
+                <Text style={styles.cardTitle}>Ejercicios</Text>
+                <Text style={styles.cardSubtitle}>
+                  {selectedExercises.length} ejercicio{selectedExercises.length !== 1 ? 's' : ''}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => setShowExerciseModal(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add" size={18} color="white" />
+            </TouchableOpacity>
+          </View>
+
+          {selectedExercises.length === 0 ? (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconContainer}>
+                <Ionicons name="fitness-outline" size={40} color="#D1D5DB" />
+              </View>
+              <Text style={styles.emptyTitle}>Ningún ejercicio agregado</Text>
+              <Text style={styles.emptySubtitle}>Toca el botón + para empezar</Text>
+            </View>
+          ) : (
+            <View style={styles.exercisesList}>
+              {selectedExercises.map((exercise, index) => (
+                <View key={exercise.tempId || exercise.id || `${exercise.exerciseId}-${index}`} style={styles.exerciseItem}>
+                  <View style={styles.exerciseContent}>
+                    <View style={styles.exerciseNumber}>
+                      <Text style={styles.exerciseNumberText}>{index + 1}</Text>
+                    </View>
+                    <View style={styles.exerciseInfo}>
+                      <Text style={styles.exerciseName}>{exercise.exerciseName}</Text>
+                      <View style={styles.exerciseMeta}>
+                        <View style={styles.muscleChip}>
+                          <Text style={styles.muscleText}>{exercise.exerciseMuscle}</Text>
+                        </View>
+                        <Text style={styles.exerciseStats}>
+                          {exercise.numberOfSets} series • {exercise.intensityType}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.exerciseActions}>
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => editExercise(index)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="pencil" size={16} color="#6B7280" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.deleteButton]}
+                        onPress={() => removeExercise(index)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="trash" size={16} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* Botón actualizado */}
+        <TouchableOpacity
+          style={[
+            styles.createButton,
+            (loading || !name.trim() || selectedExercises.length === 0) && styles.createButtonDisabled
+          ]}
+          onPress={handleSubmit}
+          disabled={loading || !name.trim() || selectedExercises.length === 0}
+          activeOpacity={0.9}
+        >
+          <View style={styles.createButtonContent}>
+            {loading ? (
+              <ActivityIndicator color="white" size="small" />
+            ) : (
+              <>
+                <Ionicons name="checkmark-circle" size={20} color="white" />
+                <Text style={styles.createButtonText}>
+                  {isEditing ? 'Actualizar Rutina' : 'Crear Rutina'}
+                </Text>
+              </>
+            )}
+          </View>
+        </TouchableOpacity>
+      </ScrollView>
+
+      {/* Modal moderno para ejercicios */}
+      <Modal visible={showExerciseModal} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={styles.modal}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalTitleContainer}>
+              <Text style={styles.modalTitle}>Agregar Ejercicio</Text>
+              <Text style={styles.modalSubtitle}>Selecciona de tu biblioteca</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowExerciseModal(false)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={24} color="#6B7280" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.modalContent}>
+            {/* Barra de búsqueda moderna */}
+            <View style={styles.searchBar}>
+              <Ionicons name="search" size={20} color="#9CA3AF" />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Buscar ejercicios..."
+                placeholderTextColor="#9CA3AF"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setSearchQuery('')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Toggle moderno */}
+            <View style={styles.toggleSection}>
+              <View style={styles.modernToggle}>
+                <TouchableOpacity
+                  style={[
+                    styles.toggleButton,
+                    selectedExerciseType === 'predefined' && styles.toggleButtonActive
+                  ]}
+                  onPress={() => setSelectedExerciseType('predefined')}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons 
+                    name="library" 
+                    size={16} 
+                    color={selectedExerciseType === 'predefined' ? 'white' : '#6B7280'} 
+                  />
+                  <Text style={[
+                    styles.toggleButtonText,
+                    selectedExerciseType === 'predefined' && styles.toggleButtonTextActive
+                  ]}>
+                    Biblioteca
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.toggleButton,
+                    selectedExerciseType === 'custom' && styles.toggleButtonActive
+                  ]}
+                  onPress={() => setSelectedExerciseType('custom')}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons 
+                    name="person" 
+                    size={16} 
+                    color={selectedExerciseType === 'custom' ? 'white' : '#6B7280'} 
+                  />
+                  <Text style={[
+                    styles.toggleButtonText,
+                    selectedExerciseType === 'custom' && styles.toggleButtonTextActive
+                  ]}>
+                    Mis Ejercicios
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Filtros horizontales mejorados */}
+            <View style={styles.filtersSection}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.filtersContainer}
+                contentContainerStyle={styles.filtersContent}
+              >
+                {muscleFilters.map((filter) => (
+                  <TouchableOpacity
+                    key={filter.value}
+                    style={[
+                      styles.filterTag,
+                      selectedMuscleFilter === filter.value && styles.filterTagActive
+                    ]}
+                    onPress={() => setSelectedMuscleFilter(filter.value)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[
+                      styles.filterTagText,
+                      selectedMuscleFilter === filter.value && styles.filterTagTextActive
+                    ]}>
+                      {filter.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Botón para crear nuevo ejercicio cuando está en "custom" */}
+            {selectedExerciseType === 'custom' && (
+              <TouchableOpacity
+                style={styles.createExerciseButton}
+                onPress={() => {
+                  setShowExerciseModal(false);
+                  router.push('/(tabs)/routines/create-exercise');
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={styles.createExerciseIcon}>
+                  <Ionicons name="add" size={14} color="white" />
+                </View>
+                <Text style={styles.createExerciseText}>Crear Nuevo Ejercicio</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Lista de ejercicios */}
+            <ScrollView
+              style={styles.exercisesList}
+              showsVerticalScrollIndicator={false}
+            >
+              {filteredExercises.length > 0 ? (
+                filteredExercises.map((exercise) => (
+                  <TouchableOpacity
+                    key={exercise.id}
+                    style={styles.exerciseOptionModern}
+                    onPress={() => addExercise(exercise)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.exerciseOptionContent}>
+                      <View style={styles.exerciseOptionInfo}>
+                        <Text style={styles.exerciseOptionName}>{exercise.name}</Text>
+                        <Text style={styles.exerciseOptionMuscle}>{exercise.muscle}</Text>
+                      </View>
+                      <View style={styles.addIconContainer}>
+                        <Ionicons name="add-circle" size={24} color="#5E4B8B" />
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={styles.noResultsContainer}>
+                  <Ionicons name="search" size={40} color="#D1D5DB" />
+                  <Text style={styles.noResultsTitle}>Sin resultados</Text>
+                  <Text style={styles.noResultsText}>
+                    No encontramos ejercicios con esos criterios
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Modal editor de series MEJORADO */}
+      <Modal visible={showSetEditor} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={styles.modal}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity
+              style={styles.modalBackButton}
+              onPress={() => {
+                setShowSetEditor(false);
+                setEditingExercise(null);
+                setEditingIndex(null);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-back" size={24} color="#6B7280" />
+            </TouchableOpacity>
+            <View style={styles.modalTitleContainer}>
+              <Text style={styles.modalTitle}>{editingExercise?.exerciseName}</Text>
+              <Text style={styles.modalSubtitle}>Configurar series</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.saveButton}
+              onPress={() => editingExercise && updateExercise(editingExercise)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.saveButtonText}>Guardar</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            {/* Configuración básica mejorada */}
+            <View style={styles.configCard}>
+              <Text style={styles.configTitle}>Configuración General</Text>
+              
+              <View style={styles.configRow}>
+                <View style={styles.configItem}>
+                  <Text style={styles.configLabel}>Descanso entre series</Text>
+                  <View style={styles.inputWrapper}>
+                    <TextInput
+                      style={styles.configInputImproved}
+                      value={editingExercise?.restBetweenSets?.toString() || ''}
+                      onChangeText={(text) => {
+                        const numValue = parseInt(text) || 90;
+                        editingExercise && setEditingExercise({
+                          ...editingExercise,
+                          restBetweenSets: numValue
+                        });
+                      }}
+                      keyboardType="number-pad"
+                      placeholder="90"
+                      placeholderTextColor="#9CA3AF"
+                      selectTextOnFocus={true}
+                    />
+                    <Text style={styles.unitLabel}>seg</Text>
+                  </View>
+                </View>
+                
+                <View style={styles.configItem}>
+                  <Text style={styles.configLabel}>Tipo de intensidad</Text>
+                  <View style={styles.intensityToggleImproved}>
+                    <TouchableOpacity
+                      style={[
+                        styles.intensityButtonImproved,
+                        editingExercise?.intensityType === 'RIR' && styles.intensityButtonActiveImproved
+                      ]}
+                      onPress={toggleIntensityType}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[
+                        styles.intensityButtonTextImproved,
+                        editingExercise?.intensityType === 'RIR' && styles.intensityButtonTextActiveImproved
+                      ]}>RIR</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.intensityButtonImproved,
+                        editingExercise?.intensityType === 'RPE' && styles.intensityButtonActiveImproved
+                      ]}
+                      onPress={toggleIntensityType}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[
+                        styles.intensityButtonTextImproved,
+                        editingExercise?.intensityType === 'RPE' && styles.intensityButtonTextActiveImproved
+                      ]}>RPE</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* Series mejoradas */}
+            <View style={styles.setsCard}>
+              <View style={styles.setsHeader}>
+                <View>
+                  <Text style={styles.configTitle}>Series</Text>
+                  <Text style={styles.setsSubtitle}>{editingExercise?.sets?.length || 0} series configuradas</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.addSetButtonImproved}
+                  onPress={addSetToExercise}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="add" size={18} color="white" />
+                  <Text style={styles.addSetButtonText}>Agregar</Text>
+                </TouchableOpacity>
+              </View>
+
+              {editingExercise?.sets?.map((set, setIndex) => (
+                <View key={setIndex} style={styles.setItemImproved}>
+                  <View style={styles.setHeaderImproved}>
+                    <View style={styles.setNumberContainer}>
+                      <Text style={styles.setNumberImproved}>Serie {set.setNumber}</Text>
+                    </View>
+                    {editingExercise.sets.length > 1 && (
+                      <TouchableOpacity
+                        onPress={() => removeSetFromExercise(setIndex)}
+                        activeOpacity={0.7}
+                        style={styles.removeSetButtonImproved}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Inputs mejorados en grid más claro */}
+                  <View style={styles.setInputsGridImproved}>
+                    {/* Fila 1: Repeticiones */}
+                    <View style={styles.inputRowImproved}>
+                      <View style={styles.inputGroupImproved}>
+                        <Text style={styles.setInputLabelImproved}>Reps Mínimas</Text>
+                        <TextInput
+                          style={styles.setInputImproved}
+                          value={set.targetRepsMin?.toString() || ''}
+                          onChangeText={(text) => updateSet(setIndex, 'targetRepsMin', parseInt(text) || 0)}
+                          keyboardType="number-pad"
+                          placeholder="8"
+                          placeholderTextColor="#9CA3AF"
+                          selectTextOnFocus={true}
+                        />
+                      </View>
+                      <View style={styles.inputGroupImproved}>
+                        <Text style={styles.setInputLabelImproved}>Reps Máximas</Text>
+                        <TextInput
+                          style={styles.setInputImproved}
+                          value={set.targetRepsMax?.toString() || ''}
+                          onChangeText={(text) => updateSet(setIndex, 'targetRepsMax', parseInt(text) || 0)}
+                          keyboardType="number-pad"
+                          placeholder="12"
+                          placeholderTextColor="#9CA3AF"
+                          selectTextOnFocus={true}
+                        />
+                      </View>
+                    </View>
+
+                    {/* Fila 2: Peso e Intensidad */}
+                    <View style={styles.inputRowImproved}>
+                      <View style={styles.inputGroupImproved}>
+                        <Text style={styles.setInputLabelImproved}>Peso (kg)</Text>
+                        <TextInput
+                          style={styles.setInputImproved}
+                          value={set.targetWeight?.toString() || ''}
+                          onChangeText={(text) => updateSet(setIndex, 'targetWeight', parseFloat(text) || 0)}
+                          keyboardType="numeric"
+                          placeholder="20"
+                          placeholderTextColor="#9CA3AF"
+                          selectTextOnFocus={true}
+                        />
+                      </View>
+                      <View style={styles.inputGroupImproved}>
+                        <Text style={styles.setInputLabelImproved}>
+                          {editingExercise.intensityType} (0-{editingExercise.intensityType === 'RIR' ? '5' : '10'})
+                        </Text>
+                        <TextInput
+                          style={styles.setInputImproved}
+                          value={set.intensity?.toString() || ''}
+                          onChangeText={(text) => {
+                            const value = parseInt(text) || 0;
+                            const maxValue = editingExercise.intensityType === 'RIR' ? 5 : 10;
+                            const clampedValue = Math.min(Math.max(value, 0), maxValue);
+                            updateSet(setIndex, 'intensity', clampedValue);
+                          }}
+                          keyboardType="number-pad"
+                          placeholder={editingExercise.intensityType === 'RIR' ? '2' : '8'}
+                          placeholderTextColor="#9CA3AF"
+                          selectTextOnFocus={true}
+                        />
+                      </View>
+                    </View>
+
+                    {/* Fila 3: Notas (opcional) */}
+                    <View style={styles.notesContainerImproved}>
+                      <Text style={styles.setInputLabelImproved}>Notas (opcional)</Text>
+                      <TextInput
+                        style={styles.notesInputImproved}
+                        value={set.notes || ''}
+                        onChangeText={(text) => updateSet(setIndex, 'notes', text)}
+                        placeholder="Ej: Serie de calentamiento, usar drop set..."
+                        placeholderTextColor="#9CA3AF"
+                        multiline={true}
+                        numberOfLines={2}
+                      />
+                    </View>
+                  </View>
+
+                  {/* Preview rápido de la serie */}
+                  <View style={styles.setPreview}>
+                    <Text style={styles.setPreviewText}>
+                      {set.targetRepsMin}-{set.targetRepsMax} reps × {set.targetWeight}kg 
+                      {editingExercise.intensityType === 'RIR' ? ` (${set.intensity} RIR)` : ` (@${set.intensity} RPE)`}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+
+              {/* Botón para agregar serie rápida */}
+              <TouchableOpacity
+                style={styles.quickAddButton}
+                onPress={addSetToExercise}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="add-circle-outline" size={20} color="#5E4B8B" />
+                <Text style={styles.quickAddText}>Agregar otra serie</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  header: {
+    backgroundColor: 'white',
+    paddingTop: 20,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  headerTitleContainer: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  headerSubtitle: {
+    fontSize: 15,
+    color: '#6B7280',
+    fontWeight: '400',
+  },
+  content: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  formCard: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 24,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  inputContainer: {
+    position: 'relative',
+  },
+  input: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#1F2937',
+    fontWeight: '400',
+  },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  exercisesCard: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 24,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  cardSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  addButton: {
+    backgroundColor: '#5E4B8B',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#5E4B8B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F9FAFB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#9CA3AF',
+  },
+  exercisesList: {
+    gap: 12,
+  },
+  exerciseItem: {
+    backgroundColor: '#FAFBFC',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  exerciseContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  exerciseNumber: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#5E4B8B',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  exerciseNumberText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: 'white',
+  },
+  exerciseInfo: {
+    flex: 1,
+  },
+  exerciseName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  exerciseMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  muscleChip: {
+    backgroundColor: '#EDE9FE',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  muscleText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#5E4B8B',
+  },
+  exerciseStats: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  exerciseActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButton: {
+    backgroundColor: '#FEF2F2',
+  },
+  createButton: {
+    backgroundColor: '#5E4B8B',
+    borderRadius: 16,
+    paddingVertical: 18,
+    marginTop: 16,
+    shadowColor: '#5E4B8B',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+    marginBottom:70
+  },
+  createButtonDisabled: {
+    backgroundColor: '#D1D5DB',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  createButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  createButtonText: {
+    color: 'white',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  modal: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E5E7EB',
+    marginTop:10,
+  },
+  modalTitleContainer: {
+    flex: 1,
+    alignItems: "flex-start",
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  modalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBackButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  saveButton: {
+    backgroundColor: '#5E4B8B',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  saveButtonText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  modalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 20,
+    gap: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  toggleSection: {
+    marginBottom: 20,
+  },
+  modernToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 4,
+  },
+  toggleButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 6,
+  },
+  toggleButtonActive: {
+    backgroundColor: '#5E4B8B',
+    shadowColor: '#5E4B8B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  toggleButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  toggleButtonTextActive: {
+    color: 'white',
+  },
+  filtersSection: {
+    marginBottom: 20,
+  },
+  filtersContainer: {
+    height: 60,
+  },
+  filtersContent: {
+    alignItems: 'center',
+    paddingVertical: 5,
+    paddingRight: 24,
+    gap: 10,
+  },
+  filterTag: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    minWidth: 60,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  filterTagActive: {
+    backgroundColor: '#5E4B8B',
+    borderColor: '#5E4B8B',
+    shadowColor: '#5E4B8B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  filterTagText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  filterTagTextActive: {
+    color: 'white',
+    fontWeight: '700',
+  },
+  exerciseOptionModern: {
+    paddingVertical: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#F1F5F9',
+  },
+  exerciseOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  exerciseOptionInfo: {
+    flex: 1,
+  },
+  exerciseOptionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  exerciseOptionMuscle: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  addIconContainer: {
+    padding: 4,
+  },
+  noResultsContainer: {
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  noResultsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#374151',
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  noResultsText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
+  },
+  createExerciseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    marginTop: 0,
+    gap: 12,
+  },
+  createExerciseIcon: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#5E4B8B',
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  createExerciseText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  configCard: {
+    backgroundColor: '#FAFBFC',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+  },
+  configRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  configItem: {
+    flex: 1,
+  },
+  configLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  configTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 16,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  configInputImproved: {
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#1F2937',
+    fontWeight: '600',
+  },
+  unitLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  intensityToggleImproved: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  intensityButtonImproved: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  intensityButtonActiveImproved: {
+    backgroundColor: '#5E4B8B',
+    shadowColor: '#5E4B8B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  intensityButtonTextImproved: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  intensityButtonTextActiveImproved: {
+    color: 'white',
+  },
+  setsCard: {
+    backgroundColor: '#FAFBFC',
+    borderRadius: 16,
+    padding: 20,
+  },
+  setsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+  },
+  setsSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  addSetButtonImproved: {
+    backgroundColor: '#5E4B8B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    gap: 6,
+    shadowColor: '#5E4B8B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  addSetButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  setItemImproved: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  setHeaderImproved: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  setNumberContainer: {
+    backgroundColor: '#EDE9FE',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  setNumberImproved: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#5E4B8B',
+  },
+  removeSetButtonImproved: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FEF2F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    
+  },
+  setInputsGridImproved: {
+    gap: 16,
+  },
+  inputRowImproved: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  inputGroupImproved: {
+    flex: 1,
+  },
+  setInputLabelImproved: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  setInputImproved: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#1F2937',
+    fontWeight: '600',
+    textAlign: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  notesContainerImproved: {
+    marginTop: 4,
+  },
+  notesInputImproved: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#1F2937',
+    minHeight: 50,
+    textAlignVertical: 'top',
+  },
+  setPreview: {
+    backgroundColor: '#EDE9FE',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#5E4B8B',
+  },
+  setPreviewText: {
+    fontSize: 14,
+    color: '#5E4B8B',
+    fontWeight: '500',
+  },
+  quickAddButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 16,
+    marginTop: 8,
+    gap: 8,
+  },
+  quickAddText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#5E4B8B',
+  },
+});
+
+export default CreateRoutineScreen;

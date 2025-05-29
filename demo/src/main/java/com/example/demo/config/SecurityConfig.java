@@ -21,6 +21,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/login", "/publico", "/register").permitAll()  // 🔓 acceso libre
                         .requestMatchers("/admin").hasRole("ADMIN")                      // 🔐 solo admin
+                        .requestMatchers("/exercises/**").authenticated()                // 🔐 ejercicios requieren autenticación
+                        .requestMatchers("/routines/**").authenticated()                 // 🔐 rutinas requieren autenticación
+                        .requestMatchers("/user/**").authenticated()                     // 🔐 perfil de usuario requiere autenticación
                         .anyRequest().authenticated()                                   // 🔐 el resto, token
                 )
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)  // 🔍 agrega el filtro JWT

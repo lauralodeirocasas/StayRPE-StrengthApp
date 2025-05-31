@@ -114,57 +114,25 @@ const CreateMacrocycleScreen = () => {
     return true;
   };
 
-  const handleSubmit = async () => {
-    if (!token || !validateForm()) {
+  const handleContinue = () => {
+    if (!validateForm()) {
       return;
     }
     
-    setLoading(true);
+    // Navegar a la pantalla de planificación con los datos
+    const macrocycleData = {
+      name: name.trim(),
+      description: description.trim(),
+      startDate: formatDateForAPI(startDate),
+      microcycleDurationDays: microcycleDurationDays,
+      totalMicrocycles: totalMicrocycles,
+    };
     
-    try {
-      const macrocycleData = {
-        name: name.trim(),
-        description: description.trim(),
-        startDate: formatDateForAPI(startDate),
-        microcycleDurationDays: microcycleDurationDays,
-        totalMicrocycles: totalMicrocycles,
-      };
-
-      const response = await fetch(`${API_URL}/macrocycles`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(macrocycleData)
-      });
-
-      // Verificación token expirado
-      if (response.status === 401) {
-        await AsyncStorage.removeItem("token");
-        await AsyncStorage.removeItem("onboardingComplete");
-        Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
-          { text: "OK", onPress: () => router.replace("/") }
-        ]);
-        return;
-      }
-
-      const data = await response.json();
-      if (response.ok) {
-        const totalDays = microcycleDurationDays * totalMicrocycles;
-        Alert.alert(
-          'Macrociclo Creado', 
-          `"${data.name}" se ha creado correctamente.\n\nDuración total: ${totalDays} días\nMicrociclos: ${totalMicrocycles}`, 
-          [{ text: 'OK', onPress: () => router.back() }]
-        );
-      } else {
-        Alert.alert('Error', data.error || 'Error al crear macrociclo');
-      }
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo conectar con el servidor');
-    } finally {
-      setLoading(false);
-    }
+    // Pasar los datos como parámetros de navegación
+    router.push({
+      pathname: '/(tabs)/macrociclo/plan',
+      params: macrocycleData
+    });
   };
 
   if (!token) {
@@ -179,7 +147,7 @@ const CreateMacrocycleScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* Header igual al ejemplo */}
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity
@@ -201,7 +169,7 @@ const CreateMacrocycleScreen = () => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Formulario básico igual al ejemplo */}
+        {/* Formulario básico */}
         <View style={styles.formCard}>
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Nombre del Macrociclo</Text>
@@ -232,7 +200,7 @@ const CreateMacrocycleScreen = () => {
           </View>
         </View>
 
-        {/* Card de configuración igual al ejemplo */}
+        {/* Card de configuración */}
         <View style={styles.configCard}>
           <View style={styles.cardHeader}>
             <View style={styles.headerLeft}>
@@ -264,7 +232,7 @@ const CreateMacrocycleScreen = () => {
             </View>
           </View>
 
-          {/* Selectores numéricos igual al ejemplo */}
+          {/* Selectores numéricos */}
           <View style={styles.configRow}>
             <View style={styles.configItem}>
               <Text style={styles.configLabel}>Duración microciclo</Text>
@@ -340,30 +308,24 @@ const CreateMacrocycleScreen = () => {
           </View>
         </View>
 
-        {/* Botón igual al ejemplo */}
+        {/* Botón continuar */}
         <TouchableOpacity
           style={[
-            styles.createButton,
-            (loading || !name.trim()) && styles.createButtonDisabled
+            styles.continueButton,
+            !name.trim() && styles.continueButtonDisabled
           ]}
-          onPress={handleSubmit}
-          disabled={loading || !name.trim()}
+          onPress={handleContinue}
+          disabled={!name.trim()}
           activeOpacity={0.9}
         >
-          <View style={styles.createButtonContent}>
-            {loading ? (
-              <ActivityIndicator color="white" size="small" />
-            ) : (
-              <>
-                <Ionicons name="checkmark-circle" size={20} color="white" />
-                <Text style={styles.createButtonText}>Crear Macrociclo</Text>
-              </>
-            )}
+          <View style={styles.continueButtonContent}>
+            <Ionicons name="arrow-forward" size={20} color="white" />
+            <Text style={styles.continueButtonText}>Continuar</Text>
           </View>
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Modal de calendario igual al ejemplo pero adaptado */}
+      {/* Modal de calendario */}
       <Modal visible={showDateModal} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView style={styles.modal}>
           <View style={styles.modalHeader}>
@@ -558,9 +520,7 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginBottom: 8,
   },
-  dateSelector: {
-    // Sin estilos adicionales, usa inputWrapper
-  },
+  dateSelector: {},
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -628,7 +588,31 @@ const styles = StyleSheet.create({
     color: '#5E4B8B',
     fontWeight: '500',
   },
-  createButton: {
+  noteCard: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+  },
+  noteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  noteTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1E40AF',
+  },
+  noteText: {
+    fontSize: 14,
+    color: '#1E40AF',
+    lineHeight: 20,
+  },
+  continueButton: {
     backgroundColor: '#5E4B8B',
     borderRadius: 16,
     paddingVertical: 18,
@@ -640,18 +624,18 @@ const styles = StyleSheet.create({
     elevation: 8,
     marginBottom: 70,
   },
-  createButtonDisabled: {
+  continueButtonDisabled: {
     backgroundColor: '#D1D5DB',
     shadowOpacity: 0,
     elevation: 0,
   },
-  createButtonContent: {
+  continueButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
-  createButtonText: {
+  continueButtonText: {
     color: 'white',
     fontSize: 17,
     fontWeight: '600',

@@ -2,8 +2,12 @@ package com.example.demo.rest;
 
 import com.example.demo.dto.CreateMacrocycleDTO;
 import com.example.demo.model.Macrocycle;
+import com.example.demo.model.MacrocycleDayPlan;
+import com.example.demo.model.Routine;
 import com.example.demo.model.Usuario;
 import com.example.demo.repository.MacrocycleRepository;
+import com.example.demo.repository.MacrocycleDayPlanRepository;
+import com.example.demo.repository.RoutineRepository;
 import com.example.demo.repository.UsuarioRepository;
 
 import org.slf4j.Logger;
@@ -11,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,13 +29,19 @@ public class MacrocycleController {
     private static final Logger logger = LoggerFactory.getLogger(MacrocycleController.class);
 
     private final MacrocycleRepository macrocycleRepository;
+    private final MacrocycleDayPlanRepository dayPlanRepository;
+    private final RoutineRepository routineRepository;
     private final UsuarioRepository usuarioRepository;
 
     public MacrocycleController(
             MacrocycleRepository macrocycleRepository,
+            MacrocycleDayPlanRepository dayPlanRepository,
+            RoutineRepository routineRepository,
             UsuarioRepository usuarioRepository
     ) {
         this.macrocycleRepository = macrocycleRepository;
+        this.dayPlanRepository = dayPlanRepository;
+        this.routineRepository = routineRepository;
         this.usuarioRepository = usuarioRepository;
     }
 
@@ -51,6 +62,7 @@ public class MacrocycleController {
 
     // Crear nuevo macrociclo
     @PostMapping
+    @Transactional
     public ResponseEntity<?> createMacrocycle(@RequestBody CreateMacrocycleDTO macrocycleDTO) {
         logger.info("Creando nuevo macrociclo: {}", macrocycleDTO.getName());
 
@@ -103,6 +115,26 @@ public class MacrocycleController {
                     .build();
 
             Macrocycle savedMacrocycle = macrocycleRepository.save(macrocycle);
+
+            // Crear la planificación diaria si está presente
+            if (macrocycleDTO.getDayPlans() != null && !macrocycleDTO.getDayPlans().isEmpty()) {
+                for (CreateMacrocycleDTO.DayPlanDTO dayPlan : macrocycleDTO.getDayPlans()) {
+                    Routine routine = null;
+                    if (dayPlan.getRoutineId() != null) {
+                        routine = routineRepository.findById(dayPlan.getRoutineId()).orElse(null);
+                    }
+
+                    MacrocycleDayPlan plan = MacrocycleDayPlan.builder()
+                            .macrocycle(savedMacrocycle)
+                            .dayNumber(dayPlan.getDayNumber())
+                            .routine(routine)
+                            .isRestDay(dayPlan.getIsRestDay() != null && dayPlan.getIsRestDay())
+                            .build();
+
+                    dayPlanRepository.save(plan);
+                }
+            }
+
             logger.info("Macrociclo creado con ID: {} - Duración total: {} días",
                     savedMacrocycle.getId(), savedMacrocycle.getTotalDurationDays());
 
@@ -116,6 +148,7 @@ public class MacrocycleController {
 
     // Eliminar macrociclo
     @DeleteMapping("/{id}")
+    @Transactional
     public ResponseEntity<?> deleteMacrocycle(@PathVariable Long id) {
         logger.info("Eliminando macrociclo con ID: {}", id);
 
@@ -137,6 +170,9 @@ public class MacrocycleController {
             if (!macrocycle.getCreatedBy().getId().equals(usuario.getId())) {
                 return ResponseEntity.badRequest().body(Map.of("error", "No tienes permisos para eliminar este macrociclo"));
             }
+
+            // Eliminar primero los planes diarios
+            dayPlanRepository.deleteByMacrocycle(macrocycle);
 
             // Eliminar el macrociclo
             macrocycleRepository.delete(macrocycle);

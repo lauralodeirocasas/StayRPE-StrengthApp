@@ -77,7 +77,7 @@ export default function TabLayout() {
         }),
         // Estilo común para todos los headers
         headerStyle: {
-          backgroundColor: '#007AFF',
+          backgroundColor: '#fff',
         },
         headerTintColor: 'white',
         headerTitleStyle: {
@@ -92,6 +92,19 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Inicio',
+          headerRight: () => <LogoutButton />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={"#5E4B8B"} />,
+        }}
+      />
+      <Tabs.Screen
+        name="macrociclo"
+        options={{
+          title: 'Macrociclo',
+          headerTitleStyle: {
+            color: '#5E4B8B',     // <--- COLOR DEL TÍTULO
+            fontWeight: 'bold',
+            fontSize: 20,
+          },
           headerRight: () => <LogoutButton />,
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={"#5E4B8B"} />,
         }}

@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -35,6 +36,7 @@ public class UserProfileController {
     }
 
     @PostMapping("/profile")
+    @Transactional // ✅ CLAVE: Asegura que todo se guarde o nada
     public ResponseEntity<?> createOrUpdateProfile(@RequestBody UserProfileDTO profileDTO) {
         logger.info("Recibida solicitud para crear/actualizar perfil: {}", profileDTO);
 
@@ -51,43 +53,67 @@ public class UserProfileController {
         Usuario usuario = usuarioOpt.get();
         logger.info("Usuario encontrado: {}", usuario.getId());
 
-        Optional<UserProfile> existingProfile = userProfileRepository.findByUsuario(usuario);
-        UserProfile profile;
+        try {
+            // ✅ NUEVO: Actualizar datos básicos del Usuario (nombre y apellido)
+            if (profileDTO.getFirstName() != null && !profileDTO.getFirstName().trim().isEmpty()) {
+                usuario.setFirstName(profileDTO.getFirstName().trim());
+                logger.info("Actualizando firstName: {}", profileDTO.getFirstName());
+            }
 
-        if (existingProfile.isPresent()) {
-            logger.info("Actualizando perfil existente para usuario: {}", usuario.getId());
-            profile = existingProfile.get();
-        } else {
-            logger.info("Creando nuevo perfil para usuario: {}", usuario.getId());
-            profile = new UserProfile();
-            profile.setUsuario(usuario);
+            if (profileDTO.getLastName() != null && !profileDTO.getLastName().trim().isEmpty()) {
+                usuario.setLastName(profileDTO.getLastName().trim());
+                logger.info("Actualizando lastName: {}", profileDTO.getLastName());
+            }
+
+            // Guardar cambios en Usuario
+            usuarioRepository.save(usuario);
+            logger.info("Datos de Usuario actualizados correctamente");
+
+            // ✅ EXISTENTE: Actualizar UserProfile
+            Optional<UserProfile> existingProfile = userProfileRepository.findByUsuario(usuario);
+            UserProfile profile;
+
+            if (existingProfile.isPresent()) {
+                logger.info("Actualizando perfil existente para usuario: {}", usuario.getId());
+                profile = existingProfile.get();
+            } else {
+                logger.info("Creando nuevo perfil para usuario: {}", usuario.getId());
+                profile = new UserProfile();
+                profile.setUsuario(usuario);
+            }
+
+            // Actualizar campos del perfil
+            profile.setAge(profileDTO.getAge());
+            profile.setHeight(profileDTO.getHeight());
+            profile.setWeight(profileDTO.getWeight());
+            profile.setSex(profileDTO.getSex());
+            profile.setFitnessGoal(profileDTO.getFitnessGoal());
+            profile.setExperienceLevel(profileDTO.getExperienceLevel());
+            profile.setOnboardingComplete(true);
+
+            userProfileRepository.save(profile);
+            logger.info("Perfil guardado correctamente para usuario: {}", usuario.getId());
+
+            // ✅ RESPUESTA: Incluir datos actualizados de Usuario
+            UserProfileResponse response = UserProfileResponse.builder()
+                    .username(usuario.getUsername())
+                    .firstName(usuario.getFirstName()) // ✅ Datos actualizados
+                    .lastName(usuario.getLastName())   // ✅ Datos actualizados
+                    .age(profile.getAge())
+                    .height(profile.getHeight())
+                    .weight(profile.getWeight())
+                    .sex(profile.getSex())
+                    .fitnessGoal(profile.getFitnessGoal())
+                    .experienceLevel(profile.getExperienceLevel())
+                    .onboardingComplete(profile.isOnboardingComplete())
+                    .build();
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            logger.error("Error al actualizar perfil y usuario: ", e);
+            return ResponseEntity.badRequest().body(Map.of("error", "Error al actualizar la información"));
         }
-
-        profile.setAge(profileDTO.getAge());
-        profile.setHeight(profileDTO.getHeight());
-        profile.setWeight(profileDTO.getWeight());
-        profile.setSex(profileDTO.getSex());  // <-- Aquí el nuevo campo
-        profile.setFitnessGoal(profileDTO.getFitnessGoal());
-        profile.setExperienceLevel(profileDTO.getExperienceLevel());
-        profile.setOnboardingComplete(true);
-
-        userProfileRepository.save(profile);
-        logger.info("Perfil guardado correctamente para usuario: {}", usuario.getId());
-
-        UserProfileResponse response = UserProfileResponse.builder()
-                .username(usuario.getUsername())
-                .firstName(usuario.getFirstName())
-                .lastName(usuario.getLastName())
-                .age(profile.getAge())
-                .height(profile.getHeight())
-                .weight(profile.getWeight())
-                .sex(profile.getSex())  // <-- Aquí también
-                .fitnessGoal(profile.getFitnessGoal())
-                .experienceLevel(profile.getExperienceLevel())
-                .onboardingComplete(profile.isOnboardingComplete())
-                .build();
-
-        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/profile")
@@ -119,7 +145,7 @@ public class UserProfileController {
                     .age(profile.getAge())
                     .height(profile.getHeight())
                     .weight(profile.getWeight())
-                    .sex(profile.getSex())  // <-- Aquí también
+                    .sex(profile.getSex())
                     .fitnessGoal(profile.getFitnessGoal())
                     .experienceLevel(profile.getExperienceLevel())
                     .onboardingComplete(profile.isOnboardingComplete());

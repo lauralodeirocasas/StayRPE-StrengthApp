@@ -133,6 +133,22 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={"#5E4B8B"} />,
         }}
       />
+      <Tabs.Screen
+        name="calendar"
+        options={{
+          title: 'Calendario',
+          headerRight: () => <LogoutButton />,
+          headerTitleStyle: {
+            color: '#5E4B8B',     // <--- COLOR DEL TÍTULO
+            fontWeight: 'bold',
+            fontSize: 20,
+          },
+          headerStyle: {
+            backgroundColor: '#fff', // Color diferente para rutinas
+          }, // <-- AQUÍ alineas el logo a la izquierda
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={"#5E4B8B"} />,
+        }}
+      />
 
     </Tabs>
   );

@@ -446,7 +446,7 @@ const RoutinesScreen = () => {
                       }}
                       activeOpacity={0.7}
                     >
-                      <Ionicons name="pencil" size={16} color="#6B7280" />
+                      <Ionicons name="pencil" size={16} color="#fff" />
                     </TouchableOpacity>
                     <TouchableOpacity 
                       style={[styles.actionButton, styles.deleteButton]}
@@ -456,7 +456,7 @@ const RoutinesScreen = () => {
                       }}
                       activeOpacity={0.7}
                     >
-                      <Ionicons name="trash" size={16} color="#EF4444" />
+                      <Ionicons name="trash" size={16} color="#fff" />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -537,7 +537,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 15,
-    color: '#6B7280',
+    color: '#6B5B95',
     fontWeight: '400',
   },
   createButton: {
@@ -575,13 +575,18 @@ const styles = StyleSheet.create({
   emptyIconContainer: {
     width: 120,
     height: 120,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F3F4F6',
     borderRadius: 60,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
-    borderWidth: 2,
-    borderColor: '#F1F5F9',
+    borderWidth: 3,
+    borderColor: '#D6CDE8',
+    shadowColor: '#5E4B8B',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 24,
+    elevation: 4,
   },
   emptyTitle: {
     fontSize: 24,
@@ -633,6 +638,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    padding:10
   },
   routineInfo: {
     flex: 1,
@@ -671,11 +677,12 @@ const styles = StyleSheet.create({
   },
   routineDate: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: '#8B7AB8',
     fontWeight: '400',
+    marginTop: 8,
   },
   routineActions: {
-    flexDirection: 'row',
+    flexDirection:"column",
     gap: 8,
   },
   actionButton: {
@@ -686,10 +693,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   editButton: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#5E4B8B',
   },
   deleteButton: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#5E4B8B',
   },
   exercisesPreview: {
     marginTop: 16,

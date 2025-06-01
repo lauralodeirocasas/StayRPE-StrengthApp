@@ -31,10 +31,15 @@ public class Macrocycle {
     @JoinColumn(name = "created_by", referencedColumnName = "id")
     private Usuario createdBy; // Usuario que creó el macrociclo
 
-    @Column(name = "is_active")
-    private boolean isActive = true; // Si está activo o archivado
+    // CAMBIO: De isActive a isArchived
+    @Column(name = "is_archived")
+    private boolean isArchived = false; // Por defecto NO archivado (activo)
 
-    // NUEVOS CAMPOS
+    // Para indicar si es el macrociclo actualmente en uso
+    @Column(name = "is_currently_active")
+    private boolean isCurrentlyActive = false; // Solo uno puede estar activo a la vez
+
+    // CAMPOS EXISTENTES
     @Column(name = "start_date")
     private LocalDate startDate; // Día que empieza el macrociclo
 
@@ -61,6 +66,11 @@ public class Macrocycle {
         updatedAt = LocalDateTime.now();
     }
 
+    // NUEVO: Método helper para verificar si está activo
+    public boolean isActive() {
+        return !isArchived;
+    }
+
     // Método helper para calcular la fecha de fin del macrociclo
     public LocalDate getEndDate() {
         if (startDate != null && microcycleDurationDays != null && totalMicrocycles != null) {
@@ -76,5 +86,24 @@ public class Macrocycle {
             return microcycleDurationDays * totalMicrocycles;
         }
         return null;
+    }
+
+    // Método para verificar si el macrociclo ha terminado
+    public boolean isCompleted() {
+        LocalDate endDate = getEndDate();
+        if (endDate != null) {
+            return LocalDate.now().isAfter(endDate);
+        }
+        return false;
+    }
+
+    // Método para verificar si el macrociclo está en progreso
+    public boolean isInProgress() {
+        if (startDate != null) {
+            LocalDate today = LocalDate.now();
+            LocalDate endDate = getEndDate();
+            return !today.isBefore(startDate) && (endDate == null || !today.isAfter(endDate));
+        }
+        return false;
     }
 }

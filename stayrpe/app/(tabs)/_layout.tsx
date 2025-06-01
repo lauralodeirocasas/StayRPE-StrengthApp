@@ -33,7 +33,7 @@ export default function TabLayout() {
               console.log('✅ Sesión cerrada correctamente');
               
               // Navegar a la pantalla de registro/login
-              router.replace("/register");
+              router.push("/")
             } catch (error) {
               console.error('❌ Error al cerrar sesión:', error);
               Alert.alert('Error', 'No se pudo cerrar la sesión correctamente');
@@ -87,15 +87,7 @@ export default function TabLayout() {
         headerTitleAlign: 'center',
       }}>
       
-      {/* TAB 1: Home */}
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Inicio',
-          headerRight: () => <LogoutButton />,
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={"#5E4B8B"} />,
-        }}
-      />
+      
       <Tabs.Screen
         name="macrociclo"
         options={{
@@ -113,6 +105,22 @@ export default function TabLayout() {
         name="routines"
         options={{
           title: 'Rutinas',
+          headerRight: () => <LogoutButton />,
+          headerTitleStyle: {
+            color: '#5E4B8B',     // <--- COLOR DEL TÍTULO
+            fontWeight: 'bold',
+            fontSize: 20,
+          },
+          headerStyle: {
+            backgroundColor: '#fff', // Color diferente para rutinas
+          }, // <-- AQUÍ alineas el logo a la izquierda
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={"#5E4B8B"} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Perfil',
           headerRight: () => <LogoutButton />,
           headerTitleStyle: {
             color: '#5E4B8B',     // <--- COLOR DEL TÍTULO

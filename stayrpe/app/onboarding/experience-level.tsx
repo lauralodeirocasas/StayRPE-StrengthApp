@@ -88,7 +88,7 @@ export default function ExperienceLevelScreen() {
       if (response.ok) {
         console.log("Perfil guardado exitosamente:", data);
         await AsyncStorage.setItem("onboardingComplete", "true");
-        router.replace("/(tabs)");
+        router.replace("/(tabs)/profile");
       } else {
         console.error("Error al guardar perfil:", data);
         Alert.alert("Error", data.error || "Hubo un problema al guardar tu perfil. Inténtalo de nuevo.");

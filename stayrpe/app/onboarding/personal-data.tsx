@@ -11,6 +11,7 @@ import {
   TouchableOpacity 
 } from "react-native";
 import { useRouter } from "expo-router";
+import GradientButton from "../../components/GradientButton";
 
 type SexOption = "male" | "female" | "other";
 
@@ -186,13 +187,11 @@ export default function PersonalDataScreen() {
               </View>
             </View>
 
-            <TouchableOpacity 
-              style={styles.button} 
-              onPress={handleContinue} 
-              activeOpacity={0.8}
-            >
-              <Text style={styles.buttonText}>Continuar</Text>
-            </TouchableOpacity>
+            <GradientButton
+              title="Continuar"
+              onPress={handleContinue}
+              style={styles.button}
+            />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -201,30 +200,30 @@ export default function PersonalDataScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: "#f7f5fc" 
+  container: {
+    flex: 1,
+    backgroundColor: "#f1f1f1",
   },
-  keyboardAvoid: { 
-    flex: 1 
+  keyboardAvoid: {
+    flex: 1,
   },
-  scrollContent: { 
-    flexGrow: 1 
+  scrollContent: {
+    flexGrow: 1,
   },
-  content: { 
-    flex: 1, 
-    padding: 20 
+  content: {
+    flex: 1,
+    padding: 20,
   },
   title: {
-    fontSize: 26,
-    fontWeight: "700",
-    color: "#5E4B8B",
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#34434D",
     marginTop: 20,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   description: {
     fontSize: 16,
-    color: "#7D7A8C",
+    color: "#666",
     marginBottom: 30,
   },
   formContainer: {
@@ -235,75 +234,50 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 16,
-    color: "#5E4B8B",
+    color: "#34434D",
     marginBottom: 8,
-    fontWeight: "600",
+    fontWeight: "500",
   },
   input: {
     backgroundColor: "#fff",
     padding: 15,
-    borderRadius: 12,
+    borderRadius: 10,
     fontSize: 16,
-    shadowColor: "#B793F6",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    elevation: 3,
   },
   sexOptionsContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 5,
+    gap: 10,
   },
   sexOption: {
     flex: 1,
-    paddingVertical: 14,
-    marginHorizontal: 6,
-    borderRadius: 25,
-    borderWidth: 1.5,
-    borderColor: "#DCD6F7",
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: "transparent",
     alignItems: "center",
-    backgroundColor: "#F3F0FF",
+    backgroundColor: "#fff",
   },
   sexOptionSelected: {
-    backgroundColor: "#5E4B8B",
-    borderColor: "#5936A2",
-    shadowColor: "#5936A2",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
+    borderColor: "#3366cc",
+    backgroundColor: "#e6efff",
   },
   sexOptionText: {
-    fontSize: 16,
-    color: "#7D7A8C",
-    fontWeight: "600",
+    fontSize: 14,
+    color: "#34434D",
+    fontWeight: "500",
   },
   sexOptionTextSelected: {
-    color: "#fff9db",
-    fontWeight: "700",
+    color: "#3366cc",
+    fontWeight: "600",
   },
   errorText: {
-    color: "#E94F37",
+    color: "red",
     fontSize: 12,
     marginTop: 5,
   },
   button: {
     width: "100%",
-    backgroundColor: "#5E4B8B",
-    paddingVertical: 16,
-    borderRadius: 30,
-    alignItems: "center",
-    shadowColor: "#8B63D7",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  buttonText: {
-    color: "#fff9db",
-    fontWeight: "700",
-    fontSize: 18,
-    letterSpacing: 1,
+    marginTop: 20,
   },
 });

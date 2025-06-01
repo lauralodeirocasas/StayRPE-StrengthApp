@@ -11,14 +11,13 @@ import {
   Modal,
 } from 'react-native';
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Routine {
   id: number;
   name: string;
   description: string;
-  durationMinutes: number;
 }
 
 interface DayPlan {
@@ -63,11 +62,14 @@ const PlanMacrocycleScreen = () => {
     getToken();
   }, []);
 
-  useEffect(() => {
-    if (token) {
-      loadRoutines();
-    }
-  }, [token]);
+  // 🔥 CAMBIO PRINCIPAL: Usar useFocusEffect para recargar rutinas cuando volvamos a la pantalla
+  useFocusEffect(
+    React.useCallback(() => {
+      if (token) {
+        loadRoutines();
+      }
+    }, [token])
+  );
 
   useEffect(() => {
     initializeDayPlans();
@@ -95,6 +97,7 @@ const PlanMacrocycleScreen = () => {
 
       if (response.ok) {
         const data = await response.json();
+        console.log('🔄 Rutinas recargadas:', data.length);
         setRoutines(data);
       }
     } catch (error) {
@@ -209,6 +212,12 @@ const PlanMacrocycleScreen = () => {
     return routine ? routine.name : 'Rutina no encontrada';
   };
 
+  // 🔥 MEJORA ADICIONAL: Agregar un botón de refresh manual para las rutinas
+  const handleRefreshRoutines = async () => {
+    console.log('🔄 Refrescando rutinas manualmente...');
+    await loadRoutines();
+  };
+
   if (!token || loadingRoutines) {
     return (
       <SafeAreaView style={styles.container}>
@@ -236,6 +245,14 @@ const PlanMacrocycleScreen = () => {
             <Text style={styles.headerTitle}>Planificar Días</Text>
             <Text style={styles.headerSubtitle}>{macrocycleData.name}</Text>
           </View>
+          {/* 🔥 Botón de refresh opcional */}
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={handleRefreshRoutines}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="refresh" size={20} color="#5E4B8B" />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -261,7 +278,9 @@ const PlanMacrocycleScreen = () => {
               </View>
               <View>
                 <Text style={styles.cardTitle}>Planificación del Microciclo</Text>
-                <Text style={styles.cardSubtitle}>Asigna rutinas a cada día</Text>
+                <Text style={styles.cardSubtitle}>
+                  Asigna rutinas a cada día • {routines.length} rutinas disponibles
+                </Text>
               </View>
             </View>
           </View>
@@ -274,7 +293,7 @@ const PlanMacrocycleScreen = () => {
               </Text>
               <TouchableOpacity
                 style={styles.createRoutineButton}
-                onPress={() => router.push('/(tabs)/rutinas/create')}
+                onPress={() => router.push('/(tabs)/routines/create')}
                 activeOpacity={0.8}
               >
                 <Ionicons name="add-circle" size={20} color="white" />
@@ -403,9 +422,6 @@ const PlanMacrocycleScreen = () => {
                     </View>
                     <View style={styles.routineDetails}>
                       <Text style={styles.routineOptionName}>{routine.name}</Text>
-                      <Text style={styles.routineOptionDescription}>
-                        {routine.durationMinutes} min
-                      </Text>
                       {routine.description && (
                         <Text style={styles.routineOptionExtra}>
                           {routine.description}
@@ -473,6 +489,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#6B7280',
     fontWeight: '400',
+  },
+  // 🔥 Nuevo estilo para el botón de refresh
+  refreshButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
   },
   content: {
     flex: 1,

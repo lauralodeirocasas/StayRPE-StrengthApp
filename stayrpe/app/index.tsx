@@ -24,7 +24,7 @@ export default function Login() {
           
           if (onboardingComplete === "true") {
             // Si el onboarding está completo, ir directamente al dashboard
-            router.replace("/(tabs)");
+            router.replace("/(tabs)/profile");
           } else {
             // Si no está completo, ir a la pantalla intermedia
             router.replace("/logueado");
@@ -96,7 +96,7 @@ export default function Login() {
             
             if (profileData.onboardingComplete) {
               await AsyncStorage.setItem("onboardingComplete", "true");
-              router.replace("/(tabs)");
+              router.replace("/(tabs)/profile");
             } else {
               router.replace("/logueado");
             }

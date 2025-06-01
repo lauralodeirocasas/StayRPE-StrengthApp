@@ -20,7 +20,7 @@ export default function Logueado() {
 
         const onboardingComplete = await AsyncStorage.getItem("onboardingComplete");
         if (onboardingComplete === "true") {
-          router.replace("/(tabs)");
+          router.replace("/(tabs)/profile");
           return;
         }
 
@@ -33,7 +33,7 @@ export default function Logueado() {
           const data = await response.json();
           if (data.onboardingComplete === true) {
             await AsyncStorage.setItem("onboardingComplete", "true");
-            router.replace("/(tabs)");
+            router.replace("/(tabs)/profile");
             return;
           }
         }

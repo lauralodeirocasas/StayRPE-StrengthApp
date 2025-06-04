@@ -1,14 +1,14 @@
 package com.example.demo.rest;
 
 import com.example.demo.dto.CreateMacrocycleDTO;
+import com.example.demo.dto.DayCustomizationRequest;
+import com.example.demo.dto.DayCustomizationResponse;
 import com.example.demo.model.Macrocycle;
 import com.example.demo.model.MacrocycleDayPlan;
 import com.example.demo.model.Routine;
 import com.example.demo.model.Usuario;
-import com.example.demo.repository.MacrocycleRepository;
-import com.example.demo.repository.MacrocycleDayPlanRepository;
-import com.example.demo.repository.RoutineRepository;
-import com.example.demo.repository.UsuarioRepository;
+import com.example.demo.repository.*;
+import com.example.demo.service.MacrocycleCustomizationService;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,10 +18,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
@@ -35,16 +32,25 @@ public class MacrocycleController {
     private final RoutineRepository routineRepository;
     private final UsuarioRepository usuarioRepository;
 
+    // 🔥 NUEVAS DEPENDENCIAS PARA CUSTOMIZACIÓN
+    private final MacrocycleCustomizationService macrocycleCustomizationService;
+    private final MacrocycleDayCustomizationRepository macrocycleDayCustomizationRepository;
+
+    // 🔥 CONSTRUCTOR ACTUALIZADO
     public MacrocycleController(
             MacrocycleRepository macrocycleRepository,
             MacrocycleDayPlanRepository dayPlanRepository,
             RoutineRepository routineRepository,
-            UsuarioRepository usuarioRepository
+            UsuarioRepository usuarioRepository,
+            MacrocycleCustomizationService macrocycleCustomizationService,
+            MacrocycleDayCustomizationRepository macrocycleDayCustomizationRepository
     ) {
         this.macrocycleRepository = macrocycleRepository;
         this.dayPlanRepository = dayPlanRepository;
         this.routineRepository = routineRepository;
         this.usuarioRepository = usuarioRepository;
+        this.macrocycleCustomizationService = macrocycleCustomizationService;
+        this.macrocycleDayCustomizationRepository = macrocycleDayCustomizationRepository;
     }
 
     // CAMBIO: Obtener todos los macrociclos activos (no archivados) del usuario
@@ -77,7 +83,6 @@ public class MacrocycleController {
         return ResponseEntity.ok(archivedMacrocycles);
     }
 
-    // Obtener el macrociclo actualmente activo
     @GetMapping("/active")
     public ResponseEntity<?> getActiveMacrocycle() {
         logger.info("Solicitando macrociclo actualmente activo");
@@ -90,7 +95,13 @@ public class MacrocycleController {
         Optional<Macrocycle> activeMacrocycle = macrocycleRepository.findByCreatedByAndIsCurrentlyActiveTrue(usuario);
 
         if (activeMacrocycle.isEmpty()) {
-            return ResponseEntity.ok(Map.of("message", "No hay macrociclo activo", "activeMacrocycle", null));
+            // 🔥 FIX: Usar HashMap en lugar de Map.of() para permitir null
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "No hay macrociclo activo");
+            response.put("activeMacrocycle", null);
+
+            logger.info("No hay macrociclo activo para el usuario: {}", usuario.getUsername());
+            return ResponseEntity.ok(response);
         }
 
         logger.info("Macrociclo activo encontrado: {}", activeMacrocycle.get().getName());
@@ -155,7 +166,10 @@ public class MacrocycleController {
         }
     }
 
-    // Desactivar el macrociclo actualmente activo
+    /**
+     * 🔥 MODIFICADO: Desactiva el macrociclo actualmente activo.
+     * Ahora borra automáticamente todas las customizaciones.
+     */
     @PutMapping("/deactivate")
     @Transactional
     public ResponseEntity<?> deactivateCurrentMacrocycle() {
@@ -174,15 +188,53 @@ public class MacrocycleController {
             }
 
             Macrocycle macrocycle = activeMacrocycle.get();
+
+            // 🔥 NUEVO: Verificar si hay customizaciones antes de borrar
+            long customizationCount = macrocycleDayCustomizationRepository.countByMacrocycle(macrocycle);
+            List<Integer> customizedDays = Collections.emptyList();
+
+            if (customizationCount > 0) {
+                logger.info("El macrociclo {} tiene {} customizaciones que serán eliminadas",
+                        macrocycle.getName(), customizationCount);
+
+                // Obtener lista de días customizados para informar al usuario
+                customizedDays = macrocycleCustomizationService.getCustomizedDays(macrocycle);
+
+                // 🔥 NUEVO: Borrar todas las customizaciones usando el servicio
+                macrocycleCustomizationService.resetAllCustomizations(macrocycle);
+
+                logger.info("Se eliminaron {} customizaciones de {} días",
+                        customizationCount, customizedDays.size());
+            }
+
+            // Desactivar el macrociclo (código original)
             macrocycle.setCurrentlyActive(false);
             macrocycleRepository.save(macrocycle);
 
             logger.info("Macrociclo desactivado: {} (ID: {})", macrocycle.getName(), macrocycle.getId());
 
-            return ResponseEntity.ok(Map.of(
-                    "message", "Macrociclo desactivado correctamente",
-                    "macrocycle", macrocycle
-            ));
+            // 🔥 MEJORADO: Response más informativa incluyendo info de customizaciones
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Macrociclo desactivado correctamente");
+            response.put("macrocycle", macrocycle);
+
+            // Información sobre customizaciones eliminadas
+            if (customizationCount > 0) {
+                response.put("customizationsDeleted", true);
+                response.put("deletedCustomizationsCount", customizationCount);
+                response.put("customizedDaysCount", customizedDays.size());
+                response.put("customizedDays", customizedDays);
+                response.put("customizationMessage",
+                        String.format("Se eliminaron %d customizaciones de %d días. " +
+                                        "Si reactivas este macrociclo, empezará con las rutinas originales.",
+                                customizationCount, customizedDays.size()));
+            } else {
+                response.put("customizationsDeleted", false);
+                response.put("deletedCustomizationsCount", 0);
+                response.put("customizationMessage", "No había customizaciones para eliminar");
+            }
+
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             logger.error("Error al desactivar macrociclo", e);
@@ -541,6 +593,346 @@ public class MacrocycleController {
         } catch (Exception e) {
             logger.error("Error al eliminar macrociclo", e);
             return ResponseEntity.badRequest().body(Map.of("error", "Error al eliminar el macrociclo"));
+        }
+    }
+
+    // =========================================================================
+    // 🔥 NUEVOS ENDPOINTS PARA CUSTOMIZACIÓN DE DÍAS
+    // =========================================================================
+
+    /**
+     * Obtiene la información completa de un día específico con customizaciones.
+     *
+     * GET /macrocycles/{id}/days/{absoluteDay}
+     *
+     * Ejemplo: GET /macrocycles/5/days/15
+     * Response: Información del día 15 con rutina original + customizaciones
+     */
+    @GetMapping("/{id}/days/{absoluteDay}")
+    public ResponseEntity<?> getDayCustomization(
+            @PathVariable Long id,
+            @PathVariable Integer absoluteDay) {
+
+        logger.info("Solicitando customización del día {} del macrociclo {}", absoluteDay, id);
+
+        Usuario usuario = getCurrentUser();
+        if (usuario == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Usuario no encontrado"));
+        }
+
+        try {
+            // Verificar que el macrociclo existe y pertenece al usuario
+            Optional<Macrocycle> macrocycleOpt = macrocycleRepository.findById(id);
+            if (macrocycleOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Macrociclo no encontrado"));
+            }
+
+            Macrocycle macrocycle = macrocycleOpt.get();
+
+            // Verificar permisos
+            if (!macrocycle.getCreatedBy().getId().equals(usuario.getId())) {
+                return ResponseEntity.badRequest().body(Map.of("error", "No tienes permisos para ver este macrociclo"));
+            }
+
+            // Verificar que el macrociclo está activo (no archivado)
+            if (macrocycle.isArchived()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "No se puede ver un macrociclo archivado"));
+            }
+
+            // Obtener la customización del día
+            DayCustomizationResponse response = macrocycleCustomizationService
+                    .getDayCustomization(macrocycle, absoluteDay);
+
+            logger.info("Día {} obtenido: {} - {} customizaciones",
+                    absoluteDay, response.getRoutineName(), response.getTotalCustomizations());
+
+            return ResponseEntity.ok(response);
+
+        } catch (IllegalArgumentException e) {
+            logger.warn("Error de validación: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            logger.error("Error obteniendo customización del día", e);
+            return ResponseEntity.badRequest().body(Map.of("error", "Error interno del servidor"));
+        }
+    }
+
+    /**
+     * Actualiza las customizaciones de un día específico.
+     *
+     * PUT /macrocycles/{id}/days/{absoluteDay}/customize
+     *
+     * Ejemplo: PUT /macrocycles/5/days/15/customize
+     * Body: DayCustomizationRequest con las series a modificar
+     */
+    @PutMapping("/{id}/days/{absoluteDay}/customize")
+    public ResponseEntity<?> customizeDay(
+            @PathVariable Long id,
+            @PathVariable Integer absoluteDay,
+            @RequestBody DayCustomizationRequest request) {
+
+        logger.info("Customizando día {} del macrociclo {} - {} series",
+                absoluteDay, id, request.getCustomizationCount());
+
+        Usuario usuario = getCurrentUser();
+        if (usuario == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Usuario no encontrado"));
+        }
+
+        try {
+            // Verificar macrociclo
+            Optional<Macrocycle> macrocycleOpt = macrocycleRepository.findById(id);
+            if (macrocycleOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Macrociclo no encontrado"));
+            }
+
+            Macrocycle macrocycle = macrocycleOpt.get();
+
+            // Verificar permisos
+            if (!macrocycle.getCreatedBy().getId().equals(usuario.getId())) {
+                return ResponseEntity.badRequest().body(Map.of("error", "No tienes permisos para modificar este macrociclo"));
+            }
+
+            // Verificar que el macrociclo está activo
+            if (macrocycle.isArchived()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "No se puede modificar un macrociclo archivado"));
+            }
+
+            // IMPORTANTE: Solo se puede customizar macrociclos actualmente activos
+            if (!macrocycle.isCurrentlyActive()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Solo se pueden customizar macrociclos actualmente activos"));
+            }
+
+            // Validar que el absoluteDay en la URL coincide con el del body
+            if (!absoluteDay.equals(request.getAbsoluteDay())) {
+                return ResponseEntity.badRequest().body(Map.of("error", "El día en la URL no coincide con el del cuerpo de la petición"));
+            }
+
+            // Validar request
+            if (!request.isValid()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Datos de customización inválidos"));
+            }
+
+            // 🔥 FIX: Usar el método corregido del servicio
+            macrocycleCustomizationService.saveCustomizationsSelective(macrocycle, request);
+
+            // Obtener la response actualizada
+            DayCustomizationResponse updatedResponse = macrocycleCustomizationService
+                    .getDayCustomization(macrocycle, absoluteDay);
+
+            logger.info("Día {} customizado exitosamente - {} customizaciones aplicadas",
+                    absoluteDay, updatedResponse.getTotalCustomizations());
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Customizaciones guardadas exitosamente",
+                    "day", updatedResponse
+            ));
+
+        } catch (IllegalArgumentException e) {
+            logger.warn("Error de validación: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            logger.error("Error guardando customizaciones", e);
+            return ResponseEntity.badRequest().body(Map.of("error", "Error interno del servidor"));
+        }
+    }
+
+    /**
+     * Resetea todas las customizaciones de un día específico.
+     *
+     * DELETE /macrocycles/{id}/days/{absoluteDay}/customize
+     *
+     * Ejemplo: DELETE /macrocycles/5/days/15/customize
+     * Response: Confirmación de reset + día actualizado
+     */
+    @DeleteMapping("/{id}/days/{absoluteDay}/customize")
+    public ResponseEntity<?> resetDayCustomizations(
+            @PathVariable Long id,
+            @PathVariable Integer absoluteDay) {
+
+        logger.info("Reseteando customizaciones del día {} del macrociclo {}", absoluteDay, id);
+
+        Usuario usuario = getCurrentUser();
+        if (usuario == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Usuario no encontrado"));
+        }
+
+        try {
+            // Verificar macrociclo
+            Optional<Macrocycle> macrocycleOpt = macrocycleRepository.findById(id);
+            if (macrocycleOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Macrociclo no encontrado"));
+            }
+
+            Macrocycle macrocycle = macrocycleOpt.get();
+
+            // Verificar permisos
+            if (!macrocycle.getCreatedBy().getId().equals(usuario.getId())) {
+                return ResponseEntity.badRequest().body(Map.of("error", "No tienes permisos para modificar este macrociclo"));
+            }
+
+            // Verificar que el macrociclo está activo
+            if (macrocycle.isArchived()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "No se puede modificar un macrociclo archivado"));
+            }
+
+            // Verificar que está actualmente activo
+            if (!macrocycle.isCurrentlyActive()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Solo se pueden resetear customizaciones de macrociclos actualmente activos"));
+            }
+
+            // Verificar si el día tiene customizaciones antes de resetear
+            boolean hadCustomizations = macrocycleDayCustomizationRepository
+                    .existsByMacrocycleAndAbsoluteDay(macrocycle, absoluteDay);
+
+            if (!hadCustomizations) {
+                return ResponseEntity.ok(Map.of(
+                        "message", "El día no tenía customizaciones",
+                        "hadCustomizations", false
+                ));
+            }
+
+            // Resetear customizaciones
+            macrocycleCustomizationService.resetDayCustomizations(macrocycle, absoluteDay);
+
+            // Obtener el día actualizado (ahora sin customizaciones)
+            DayCustomizationResponse updatedResponse = macrocycleCustomizationService
+                    .getDayCustomization(macrocycle, absoluteDay);
+
+            logger.info("Customizaciones del día {} reseteadas exitosamente", absoluteDay);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Customizaciones del día reseteadas exitosamente",
+                    "hadCustomizations", true,
+                    "day", updatedResponse
+            ));
+
+        } catch (IllegalArgumentException e) {
+            logger.warn("Error de validación: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            logger.error("Error reseteando customizaciones del día", e);
+            return ResponseEntity.badRequest().body(Map.of("error", "Error interno del servidor"));
+        }
+    }
+
+    /**
+     * Obtiene la lista de días que tienen customizaciones en un macrociclo.
+     *
+     * GET /macrocycles/{id}/customized-days
+     *
+     * Ejemplo: GET /macrocycles/5/customized-days
+     * Response: [15, 22, 37] - Lista de días absolutos con customizaciones
+     */
+    @GetMapping("/{id}/customized-days")
+    public ResponseEntity<?> getCustomizedDays(@PathVariable Long id) {
+
+        logger.info("Solicitando días customizados del macrociclo {}", id);
+
+        Usuario usuario = getCurrentUser();
+        if (usuario == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Usuario no encontrado"));
+        }
+
+        try {
+            // Verificar macrociclo
+            Optional<Macrocycle> macrocycleOpt = macrocycleRepository.findById(id);
+            if (macrocycleOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Macrociclo no encontrado"));
+            }
+
+            Macrocycle macrocycle = macrocycleOpt.get();
+
+            // Verificar permisos
+            if (!macrocycle.getCreatedBy().getId().equals(usuario.getId())) {
+                return ResponseEntity.badRequest().body(Map.of("error", "No tienes permisos para ver este macrociclo"));
+            }
+
+            // Obtener días customizados
+            List<Integer> customizedDays = macrocycleCustomizationService.getCustomizedDays(macrocycle);
+
+            // Obtener estadísticas adicionales
+            long totalCustomizations = macrocycleDayCustomizationRepository.countByMacrocycle(macrocycle);
+
+            logger.info("Macrociclo {} tiene {} días customizados con {} customizaciones totales",
+                    id, customizedDays.size(), totalCustomizations);
+
+            return ResponseEntity.ok(Map.of(
+                    "customizedDays", customizedDays,
+                    "totalCustomizedDays", customizedDays.size(),
+                    "totalCustomizations", totalCustomizations,
+                    "macrocycleId", id,
+                    "macrocycleName", macrocycle.getName()
+            ));
+
+        } catch (Exception e) {
+            logger.error("Error obteniendo días customizados", e);
+            return ResponseEntity.badRequest().body(Map.of("error", "Error interno del servidor"));
+        }
+    }
+
+    /**
+     * Obtiene estadísticas detalladas de customizaciones por día.
+     *
+     * GET /macrocycles/{id}/customization-stats
+     *
+     * Endpoint adicional para obtener estadísticas más detalladas.
+     * Útil para mostrar gráficos o análisis en el frontend.
+     */
+    @GetMapping("/{id}/customization-stats")
+    public ResponseEntity<?> getCustomizationStats(@PathVariable Long id) {
+
+        logger.info("Solicitando estadísticas de customización del macrociclo {}", id);
+
+        Usuario usuario = getCurrentUser();
+        if (usuario == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Usuario no encontrado"));
+        }
+
+        try {
+            // Verificar macrociclo
+            Optional<Macrocycle> macrocycleOpt = macrocycleRepository.findById(id);
+            if (macrocycleOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Macrociclo no encontrado"));
+            }
+
+            Macrocycle macrocycle = macrocycleOpt.get();
+
+            // Verificar permisos
+            if (!macrocycle.getCreatedBy().getId().equals(usuario.getId())) {
+                return ResponseEntity.badRequest().body(Map.of("error", "No tienes permisos para ver este macrociclo"));
+            }
+
+            // Obtener estadísticas detalladas
+            List<Object[]> dayCustomizationCounts = macrocycleDayCustomizationRepository
+                    .findDayCustomizationCounts(macrocycle);
+
+            // Construir respuesta con estadísticas
+            List<Map<String, Object>> dayStats = dayCustomizationCounts.stream()
+                    .map(result -> Map.of(
+                            "absoluteDay", result[0],
+                            "customizationCount", result[1]
+                    ))
+                    .collect(Collectors.toList());
+
+            long totalCustomizations = macrocycleDayCustomizationRepository.countByMacrocycle(macrocycle);
+            Integer totalDays = macrocycle.getTotalDurationDays();
+            int customizedDaysCount = dayCustomizationCounts.size();
+
+            return ResponseEntity.ok(Map.of(
+                    "macrocycleId", id,
+                    "macrocycleName", macrocycle.getName(),
+                    "totalDays", totalDays != null ? totalDays : 0,
+                    "customizedDaysCount", customizedDaysCount,
+                    "totalCustomizations", totalCustomizations,
+                    "customizationPercentage", totalDays != null && totalDays > 0 ?
+                            Math.round((customizedDaysCount * 100.0) / totalDays) : 0,
+                    "dayStats", dayStats
+            ));
+
+        } catch (Exception e) {
+            logger.error("Error obteniendo estadísticas de customización", e);
+            return ResponseEntity.badRequest().body(Map.of("error", "Error interno del servidor"));
         }
     }
 

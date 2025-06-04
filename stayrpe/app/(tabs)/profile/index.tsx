@@ -273,6 +273,23 @@ const ProfileScreen = () => {
           <View style={styles.optionsList}>
             <TouchableOpacity 
               style={styles.optionItem}
+              onPress={() => router.push('/(tabs)/profile/workout-history')}
+              activeOpacity={0.7}
+            >
+              <View style={styles.optionContent}>
+                <View style={styles.optionIconContainer}>
+                  <Ionicons name="barbell" size={20} color="#5E4B8B" />
+                </View>
+                <View style={styles.optionInfo}>
+                  <Text style={styles.optionTitle}>Historial de Entrenamientos</Text>
+                  <Text style={styles.optionSubtitle}>Ver entrenamientos completados</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.optionItem}
               onPress={() => router.push('/(tabs)/profile/archived-macrocycles')}
               activeOpacity={0.7}
             >
@@ -594,7 +611,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 12,
     elevation: 2,
-    marginBottom:50
+    marginBottom: 50
   },
   logoutButtonContent: {
     flexDirection: 'row',
@@ -607,6 +624,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
+  
 });
 
 export default ProfileScreen;

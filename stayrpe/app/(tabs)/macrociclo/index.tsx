@@ -178,73 +178,208 @@ const MacrocyclesScreen = () => {
     }
   };
 
+  // 🔥 FUNCIÓN MEJORADA: Verificar customizaciones antes de desactivar
   const toggleMacrocycleActivation = async (macrocycle: Macrocycle) => {
     if (!token) return;
 
+    // 🚨 NUEVA VALIDACIÓN: No permitir activar si ya hay otro activo
+    if (!macrocycle.isCurrentlyActive) {
+      const activeMacrocycle = macrocycles.find(m => m.isCurrentlyActive);
+      
+      if (activeMacrocycle) {
+        Alert.alert(
+          'Macrociclo ya activo',
+          `Ya tienes el macrociclo "${activeMacrocycle.name}" activo.\n\nPara activar "${macrocycle.name}", primero debes desactivar el macrociclo actual.`,
+          [
+            {
+              text: 'Entendido',
+              style: 'cancel',
+            },
+            
+          ]
+        );
+        return;
+      }
+    }
+
     const actionText = macrocycle.isCurrentlyActive ? 'desactivar' : 'activar';
     const alertTitle = macrocycle.isCurrentlyActive ? 'Desactivar Macrociclo' : 'Activar Macrociclo';
-    const alertMessage = macrocycle.isCurrentlyActive 
-      ? `¿Estás seguro de que quieres desactivar "${macrocycle.name}"?`
-      : `¿Estás seguro de que quieres activar "${macrocycle.name}"? Esto desactivará cualquier otro macrociclo activo.`;
+    
+    // 🔥 NUEVO: Para desactivación, verificar primero si hay customizaciones
+    if (macrocycle.isCurrentlyActive) {
+      try {
+        // Verificar si hay días customizados antes de mostrar la alerta
+        const customizationsResponse = await fetch(`${API_URL}/macrocycles/${macrocycle.id}/customized-days`, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
 
+        if (customizationsResponse.ok) {
+          const customizationsData = await customizationsResponse.json();
+          const hasCustomizations = customizationsData.totalCustomizations > 0;
+          
+          // 🔥 MENSAJE PERSONALIZADO según si hay customizaciones o no
+          let alertMessage = `¿Estás seguro de que quieres desactivar "${macrocycle.name}"? Perderas todos los cambios realizados.`;
+          
+          
+
+          // 🔥 ALERTA MEJORADA con estilo destructivo
+          Alert.alert(
+            alertTitle,
+            alertMessage,
+            [
+              {
+                text: 'Cancelar',
+                style: 'cancel',
+              },
+              {
+                text: "Sí, desactivar macrociclo",
+                style: 'destructive', // 🔥 Estilo destructivo para advertir mejor
+                onPress: async () => {
+                  await performDeactivation(macrocycle, hasCustomizations);
+                },
+              },
+            ],
+            { cancelable: true }
+          );
+          
+        } else {
+          // Si no se puede verificar customizaciones, usar mensaje genérico
+          showGenericDeactivationAlert(macrocycle);
+        }
+        
+      } catch (error) {
+        console.error('Error verificando customizaciones:', error);
+        // En caso de error, usar mensaje genérico
+        showGenericDeactivationAlert(macrocycle);
+      }
+      
+    } else {
+      // Para activación, mensaje simple
+      const alertMessage = `¿Estás seguro de que quieres activar "${macrocycle.name}"?`;
+      
+      Alert.alert(
+        alertTitle,
+        alertMessage,
+        [
+          {
+            text: 'Cancelar',
+            style: 'cancel',
+          },
+          {
+            text: 'Activar',
+            onPress: async () => {
+              await performActivation(macrocycle);
+            },
+          },
+        ]
+      );
+    }
+  };
+
+  // 🔥 FUNCIÓN AUXILIAR: Alerta genérica de desactivación (fallback)
+  const showGenericDeactivationAlert = (macrocycle: Macrocycle) => {
     Alert.alert(
-      alertTitle,
-      alertMessage,
+      'Desactivar Macrociclo',
+      `⚠️ Al desactivar "${macrocycle.name}" se eliminarán todas las personalizaciones que hayas hecho en días específicos.\n\nEsta acción no se puede deshacer.\n\n¿Estás seguro de que quieres continuar?`,
       [
         {
           text: 'Cancelar',
           style: 'cancel',
         },
         {
-          text: actionText.charAt(0).toUpperCase() + actionText.slice(1),
+          text: 'Sí, desactivar',
+          style: 'destructive',
           onPress: async () => {
-            try {
-              setActivatingId(macrocycle.id);
-              
-              let url, method;
-              if (macrocycle.isCurrentlyActive) {
-                url = `${API_URL}/macrocycles/deactivate`;
-                method = 'PUT';
-              } else {
-                url = `${API_URL}/macrocycles/${macrocycle.id}/activate`;
-                method = 'PUT';
-              }
-
-              const response = await fetch(url, {
-                method: method,
-                headers: {
-                  'Authorization': `Bearer ${token}`,
-                  'Content-Type': 'application/json'
-                }
-              });
-
-              if (response.status === 401) {
-                await AsyncStorage.removeItem("token");
-                await AsyncStorage.removeItem("onboardingComplete");
-                Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
-                  { text: "OK", onPress: () => router.replace("/") }
-                ]);
-                return;
-              }
-
-              const data = await response.json();
-
-              if (response.ok) {
-                await loadMacrocycles();
-                Alert.alert('Éxito', data.message);
-              } else {
-                Alert.alert('Error', data.error || `Error al ${actionText} macrociclo`);
-              }
-            } catch (error) {
-              console.error(`Error ${actionText} macrociclo:`, error);
-              Alert.alert('Error', 'No se pudo conectar con el servidor');
-            } finally {
-              setActivatingId(null);
-            }
+            await performDeactivation(macrocycle, false);
           },
         },
-      ]
+      ],
+      { cancelable: true }
     );
+  };
+
+  // 🔥 FUNCIÓN AUXILIAR: Ejecutar desactivación
+  const performDeactivation = async (macrocycle: Macrocycle, hadCustomizations: boolean) => {
+    try {
+      setActivatingId(macrocycle.id);
+      
+      const response = await fetch(`${API_URL}/macrocycles/deactivate`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.status === 401) {
+        await AsyncStorage.removeItem("token");
+        await AsyncStorage.removeItem("onboardingComplete");
+        Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
+          { text: "OK", onPress: () => router.replace("/") }
+        ]);
+        return;
+      }
+
+      const data = await response.json();
+
+      if (response.ok) {
+        await loadMacrocycles();
+        
+        // 🔥 MENSAJE DE CONFIRMACIÓN MEJORADO
+        let successMessage = data.message || 'Macrociclo desactivado correctamente.';
+        
+        
+        Alert.alert('Desactivado', successMessage);
+      } else {
+        Alert.alert('Error', data.error || 'Error al desactivar macrociclo');
+      }
+    } catch (error) {
+      console.error('Error desactivando macrociclo:', error);
+      Alert.alert('Error', 'No se pudo conectar con el servidor');
+    } finally {
+      setActivatingId(null);
+    }
+  };
+
+  // 🔥 FUNCIÓN AUXILIAR: Ejecutar activación
+  const performActivation = async (macrocycle: Macrocycle) => {
+    try {
+      setActivatingId(macrocycle.id);
+      
+      const response = await fetch(`${API_URL}/macrocycles/${macrocycle.id}/activate`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.status === 401) {
+        await AsyncStorage.removeItem("token");
+        await AsyncStorage.removeItem("onboardingComplete");
+        Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
+          { text: "OK", onPress: () => router.replace("/") }
+        ]);
+        return;
+      }
+
+      const data = await response.json();
+
+      if (response.ok) {
+        await loadMacrocycles();
+        Alert.alert('Éxito', data.message);
+      } else {
+        Alert.alert('Error', data.error || 'Error al activar macrociclo');
+      }
+    } catch (error) {
+      console.error('Error activando macrociclo:', error);
+      Alert.alert('Error', 'No se pudo conectar con el servidor');
+    } finally {
+      setActivatingId(null);
+    }
   };
 
   const archiveMacrocycle = async (macrocycle: Macrocycle) => {
@@ -696,8 +831,6 @@ const MacrocyclesScreen = () => {
           </View>
         )}
       </ScrollView>
-
-      
     </View>
   );
 };

@@ -13,6 +13,8 @@ public class DemoApplication {
 		String password = "lau123";
 		String encoded = new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode(password);
 		System.out.println("Hash real para 'admin123': " + encoded);
+
+
 	}
 
 }

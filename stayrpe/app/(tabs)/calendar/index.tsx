@@ -6,18 +6,22 @@ import {
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
-  Modal,
-  SafeAreaView,
-  Dimensions,
   Alert,
 } from 'react-native';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
-// ============================================================================
-// INTERFACES
-// ============================================================================
+import { 
+  TodayWorkoutButton, 
+  DayModal, 
+  formatDate,
+  getDayName,
+  getMonthName,
+  isCurrentMonth,
+  getNavigationTitle,
+  getDayInfo
+} from '../../../components/CalendarComponents';
 
 interface Macrocycle {
   id: number;
@@ -45,36 +49,63 @@ interface SelectedDayInfo {
 
 type ViewMode = 'week' | 'month';
 
-const { width } = Dimensions.get('window');
-
-// ============================================================================
-// COMPONENTE PRINCIPAL
-// ============================================================================
-
 const SimpleCalendarScreen = () => {
-  // ========== ESTADOS ==========
   const [activeMacrocycle, setActiveMacrocycle] = useState<Macrocycle | null>(null);
   const [dayPlans, setDayPlans] = useState<DayPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
+  const [currentUsername, setCurrentUsername] = useState<string | null>(null);
   const [currentWeek, setCurrentWeek] = useState<Date[]>([]);
   const [currentMonth, setCurrentMonth] = useState<Date[][]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [weekOffset, setWeekOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);
-  
-  // Estados para el modal del día
+  const [showInfoCard, setShowInfoCard] = useState(true);
   const [showDayModal, setShowDayModal] = useState(false);
   const [selectedDayInfo, setSelectedDayInfo] = useState<SelectedDayInfo | null>(null);
-
-  // Estados para días customizados
   const [customizedDays, setCustomizedDays] = useState<Set<number>>(new Set());
-  const [loadingCustomizedDays, setLoadingCustomizedDays] = useState(false);
 
   const router = useRouter();
   const API_URL = 'http://192.168.0.57:8080';
 
-  // ========== EFFECTS ==========
+  const getInfoCardKey = (username: string) => `calendar_info_hidden_${username}`;
+
+  const handleApiResponse = async (response: Response, successMessage: string = '') => {
+    if (response.status === 401) {
+      await AsyncStorage.removeItem("token");
+      await AsyncStorage.removeItem("onboardingComplete");
+      Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
+        { text: "OK", onPress: () => router.replace("/") }
+      ]);
+      throw new Error('Token expired');
+    }
+
+    if (response.status === 400) {
+      try {
+        const errorData = await response.json();
+        
+        if (errorData.error && (errorData.error.includes('macrociclo') || errorData.error.includes('Macrociclo'))) {
+          return null;
+        }
+      } catch (jsonError) {
+        console.log('📋 No se pudo parsear error 400 como JSON');
+      }
+      
+      throw new Error(`Bad Request (400): ${response.statusText}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return await response.json();
+  };
+
+  const createApiHeaders = (token: string) => ({
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  });
+
   useEffect(() => {
     const getToken = async () => {
       const storedToken = await AsyncStorage.getItem("token");
@@ -83,30 +114,69 @@ const SimpleCalendarScreen = () => {
     getToken();
   }, []);
 
-  // Cargar datos cuando la pantalla recibe foco inicialmente
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      if (!token) return;
+
+      try {
+        const response = await fetch(`${API_URL}/user/profile`, {
+          headers: createApiHeaders(token)
+        });
+
+        if (response.ok) {
+          const userData = await response.json();
+          setCurrentUsername(userData.username);
+        }
+      } catch (error) {
+        console.error('Error obteniendo usuario actual:', error);
+      }
+    };
+
+    getCurrentUser();
+  }, [token]);
+
+  useEffect(() => {
+    const checkInfoCardVisibility = async () => {
+      if (!currentUsername) return;
+
+      try {
+        const userSpecificKey = getInfoCardKey(currentUsername);
+        const isHidden = await AsyncStorage.getItem(userSpecificKey);
+        setShowInfoCard(isHidden !== 'true');
+      } catch (error) {
+        console.error('Error checking info card visibility:', error);
+      }
+    };
+
+    checkInfoCardVisibility();
+  }, [currentUsername]);
+
   useFocusEffect(
     React.useCallback(() => {
       if (token) {
-        console.log('📅 Verificando macrociclo activo...');
         loadData();
       }
     }, [token])
   );
 
-  // Recargar datos específicos cuando regresamos de otras pantallas
   useFocusEffect(
     React.useCallback(() => {
       if (token && activeMacrocycle) {
-        console.log('📱 Volviendo al calendario, recargando datos actualizados...');
-        loadDayPlans(activeMacrocycle.id);
-        loadCustomizedDays(activeMacrocycle.id);
+        Promise.all([
+          loadDayPlans(activeMacrocycle.id),
+          loadCustomizedDays(activeMacrocycle.id)
+        ]).catch(error => {
+          console.error('❌ Error recargando datos específicos:', error);
+        });
+      } else if (token && !activeMacrocycle && !loading) {
+        setDayPlans([]);
+        setCustomizedDays(new Set());
       }
-    }, [token, activeMacrocycle])
+    }, [token, activeMacrocycle, loading])
   );
 
   useEffect(() => {
     if (!loading && !activeMacrocycle) {
-      console.log('❌ No hay macrociclo activo, limpiando datos...');
       setDayPlans([]);
       setCurrentWeek([]);
       setCurrentMonth([]);
@@ -126,53 +196,52 @@ const SimpleCalendarScreen = () => {
     }
   }, [weekOffset, monthOffset, viewMode, activeMacrocycle, dayPlans]);
 
-  // ========== FUNCIONES DE CARGA DE DATOS ==========
   const loadData = async () => {
     if (!token) return;
 
     try {
       setLoading(true);
-      console.log('🔄 Cargando datos del macrociclo activo...');
       
       const response = await fetch(`${API_URL}/macrocycles/active`, {
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+        headers: createApiHeaders(token)
       });
 
-      if (response.status === 401) {
-        await AsyncStorage.removeItem("token");
-        await AsyncStorage.removeItem("onboardingComplete");
-        Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
-          { text: "OK", onPress: () => router.replace("/") }
-        ]);
-        return;
-      }
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📅 Respuesta del servidor:', data);
+      const data = await handleApiResponse(response);
+      
+      if (data?.activeMacrocycle) {
+        const activeMacro = data.activeMacrocycle;
+        setActiveMacrocycle(activeMacro);
         
-        if (data.activeMacrocycle) {
-          console.log('✅ Macrociclo activo encontrado:', data.activeMacrocycle.name);
-          setActiveMacrocycle(data.activeMacrocycle);
-          await loadDayPlans(data.activeMacrocycle.id);
-          await loadCustomizedDays(data.activeMacrocycle.id);
-        } else {
-          console.log('❌ No hay macrociclo activo');
-          setActiveMacrocycle(null);
+        try {
+          const [dayPlansResult, customizedDaysResult] = await Promise.allSettled([
+            loadDayPlans(activeMacro.id),
+            loadCustomizedDays(activeMacro.id)
+          ]);
+
+          if (dayPlansResult.status === 'rejected') {
+            console.error('❌ Error cargando day plans:', dayPlansResult.reason);
+          }
+          if (customizedDaysResult.status === 'rejected') {
+            console.error('❌ Error cargando días customizados:', customizedDaysResult.reason);
+          }
+
+        } catch (dataError) {
+          console.error('❌ Error cargando datos relacionados:', dataError);
           setDayPlans([]);
           setCustomizedDays(new Set());
         }
       } else {
-        console.error('❌ Error en la respuesta:', response.status);
         setActiveMacrocycle(null);
         setDayPlans([]);
         setCustomizedDays(new Set());
       }
     } catch (error) {
-      console.error('❌ Error de conexión:', error);
+      console.error('❌ Error crítico cargando datos:', error);
+      
+      if (error.message === 'Token expired') {
+        return;
+      }
+      
       setActiveMacrocycle(null);
       setDayPlans([]);
       setCustomizedDays(new Set());
@@ -182,33 +251,21 @@ const SimpleCalendarScreen = () => {
   };
 
   const loadDayPlans = async (macrocycleId: number) => {
-    if (!token) return;
+    if (!token || !macrocycleId) {
+      setDayPlans([]);
+      return;
+    }
 
     try {
-      console.log('📋 Cargando planes diarios para macrociclo:', macrocycleId);
-      
       const response = await fetch(`${API_URL}/macrocycles/${macrocycleId}/day-plans`, {
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+        headers: createApiHeaders(token)
       });
 
-      if (response.status === 401) {
-        await AsyncStorage.removeItem("token");
-        await AsyncStorage.removeItem("onboardingComplete");
-        Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
-          { text: "OK", onPress: () => router.replace("/") }
-        ]);
-        return;
-      }
-
-      if (response.ok) {
-        const plans = await response.json();
-        console.log('📋 Planes diarios cargados:', plans.length);
-        setDayPlans(plans);
+      const data = await handleApiResponse(response);
+      
+      if (data) {
+        setDayPlans(data);
       } else {
-        console.error('❌ Error cargando planes diarios:', response.status);
         setDayPlans([]);
       }
     } catch (error) {
@@ -218,46 +275,42 @@ const SimpleCalendarScreen = () => {
   };
 
   const loadCustomizedDays = async (macrocycleId: number) => {
-    if (!token) return;
+    if (!token || !macrocycleId) {
+      setCustomizedDays(new Set());
+      return;
+    }
 
     try {
-      setLoadingCustomizedDays(true);
-      console.log('🎨 Cargando días customizados para macrociclo:', macrocycleId);
-      
       const response = await fetch(`${API_URL}/macrocycles/${macrocycleId}/customized-days`, {
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+        headers: createApiHeaders(token)
       });
 
-      if (response.status === 401) {
-        await AsyncStorage.removeItem("token");
-        await AsyncStorage.removeItem("onboardingComplete");
-        Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
-          { text: "OK", onPress: () => router.replace("/") }
-        ]);
-        return;
-      }
-
-      if (response.ok) {
-        const data = await response.json();
+      const data = await handleApiResponse(response);
+      
+      if (data) {
         const customizedDaysArray = data.customizedDays || [];
-        console.log('🎨 Días customizados cargados:', customizedDaysArray);
         setCustomizedDays(new Set(customizedDaysArray));
       } else {
-        console.error('❌ Error cargando días customizados:', response.status);
         setCustomizedDays(new Set());
       }
     } catch (error) {
       console.error('❌ Error cargando días customizados:', error);
       setCustomizedDays(new Set());
-    } finally {
-      setLoadingCustomizedDays(false);
     }
   };
 
-  // ========== FUNCIONES DE GENERACIÓN DE CALENDARIOS ==========
+  const hideInfoCard = async () => {
+    if (!currentUsername) return;
+
+    try {
+      const userSpecificKey = getInfoCardKey(currentUsername);
+      await AsyncStorage.setItem(userSpecificKey, 'true');
+      setShowInfoCard(false);
+    } catch (error) {
+      console.error('Error hiding info card:', error);
+    }
+  };
+
   const generateWeek = () => {
     const today = new Date();
     
@@ -309,128 +362,96 @@ const SimpleCalendarScreen = () => {
     setCurrentMonth(weeks);
   };
 
-  // ========== FUNCIONES AUXILIARES ==========
-  const getDayInfo = (date: Date) => {
-    if (!activeMacrocycle || dayPlans.length === 0) return null;
-
-    const startDate = new Date(activeMacrocycle.startDate + 'T00:00:00.000Z');
-    const checkDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const startDateNormalized = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-    
-    const diffTime = checkDate.getTime() - startDateNormalized.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) return null;
-
-    const totalDays = activeMacrocycle.microcycleDurationDays * activeMacrocycle.totalMicrocycles;
-    if (diffDays >= totalDays) return null;
-
-    const dayOfCycle = (diffDays % activeMacrocycle.microcycleDurationDays) + 1;
-    const dayPlan = dayPlans.find(plan => plan.dayNumber === dayOfCycle);
-
-    return {
-      ...dayPlan,
-      absoluteDay: diffDays + 1
-    };
-  };
-
   const isDayCustomized = (date: Date) => {
-    const dayInfo = getDayInfo(date);
+    const dayInfo = getDayInfo(date, activeMacrocycle, dayPlans);
     if (!dayInfo || !dayInfo.absoluteDay) return false;
     
     return customizedDays.has(dayInfo.absoluteDay);
   };
 
-  const formatDate = (date: Date) => {
-    return date.getDate().toString();
-  };
-
-  const getDayName = (date: Date) => {
-    const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-    return days[date.getDay()];
-  };
-
-  const getMonthName = (date: Date) => {
-    const months = [
-      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-    ];
-    return months[date.getMonth()];
-  };
-
-  const isCurrentMonth = (date: Date) => {
-    const today = new Date();
-    const targetMonth = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
-    return date.getMonth() === targetMonth.getMonth();
-  };
-
-  const getNavigationTitle = () => {
-    if (viewMode === 'week' && currentWeek.length > 0) {
-      return currentWeek[0].toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
-    } else if (viewMode === 'month') {
-      const today = new Date();
-      const targetDate = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
-      return `${getMonthName(targetDate)} ${targetDate.getFullYear()}`;
-    }
-    return '';
-  };
-
-  // ========== FUNCIONES DE MANEJO DE EVENTOS ==========
-  // CAMBIO EN index.tsx - Función handleStartWorkout actualizada
-
-const handleStartWorkout = async (routineId: number, routineName: string) => {
-  try {
-    Alert.alert(
-      'Iniciar Entrenamiento',
-      `¿Quieres comenzar la rutina "${routineName}"?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
+  const checkIfAlreadyTrained = async (macrocycleId: number, absoluteDay: number) => {
+    try {
+      const response = await fetch(
+        `${API_URL}/workout-history/check-day?macrocycleId=${macrocycleId}&absoluteDay=${absoluteDay}`,
         {
-          text: 'Iniciar',
-          onPress: () => {
-            // 🔥 NUEVO: Determinar si es una rutina customizada
-            const today = new Date();
-            const dayInfo = getDayInfo(today);
-            
-            if (dayInfo && dayInfo.absoluteDay && activeMacrocycle && customizedDays.has(dayInfo.absoluteDay)) {
-              // 🔥 RUTINA CUSTOMIZADA: Pasar parámetros del macrociclo
-              console.log('🎯 Iniciando rutina customizada:', {
-                routineId,
-                macrocycleId: activeMacrocycle.id,
-                absoluteDay: dayInfo.absoluteDay
-              });
-              
-              router.push({
-                pathname: '/(tabs)/calendar/workout',
-                params: {
-                  routineId: routineId.toString(),
-                  routineName: routineName,
-                  // 🔥 PARÁMETROS ADICIONALES para rutinas customizadas
-                  macrocycleId: activeMacrocycle.id.toString(),
-                  absoluteDay: dayInfo.absoluteDay.toString()
-                }
-              });
-            } else {
-              // 🔥 RUTINA ORIGINAL: Solo parámetros básicos
-              console.log('🎯 Iniciando rutina original:', { routineId });
-              
-              router.push({
-                pathname: '/(tabs)/calendar/workout',
-                params: {
+          headers: createApiHeaders(token!)
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.alreadyTrained;
+      }
+    } catch (error) {
+      console.error('❌ Error verificando día de entrenamiento:', error);
+    }
+    return false;
+  };
+
+  const handleStartWorkout = async (routineId: number, routineName: string) => {
+    try {
+      const today = new Date();
+      const dayInfo = getDayInfo(today, activeMacrocycle, dayPlans);
+      
+      if (dayInfo && dayInfo.absoluteDay && activeMacrocycle) {
+        const alreadyTrained = await checkIfAlreadyTrained(activeMacrocycle.id, dayInfo.absoluteDay);
+        
+        if (alreadyTrained) {
+          Alert.alert(
+            'Ya entrenaste hoy',
+            `Ya completaste el entrenamiento del día ${dayInfo.absoluteDay}. Solo se permite un entrenamiento por día en el macrociclo.`,
+            [
+              { text: 'Ver Historial', onPress: () => router.push('/(tabs)/profile/workout-history') },
+              { text: 'OK', style: 'cancel' }
+            ]
+          );
+          return;
+        }
+      }
+
+      Alert.alert(
+        'Iniciar Entrenamiento',
+        `¿Quieres comenzar la rutina "${routineName}"?`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Iniciar',
+            onPress: () => {
+              if (dayInfo && dayInfo.absoluteDay && activeMacrocycle && customizedDays.has(dayInfo.absoluteDay)) {
+                router.push({
+                  pathname: '/workout',
+                  params: {
+                    routineId: routineId.toString(),
+                    routineName: routineName,
+                    macrocycleId: activeMacrocycle.id.toString(),
+                    absoluteDay: dayInfo.absoluteDay.toString()
+                  }
+                });
+              } else {
+                const params: any = {
                   routineId: routineId.toString(),
                   routineName: routineName
+                };
+
+                if (dayInfo && dayInfo.absoluteDay && activeMacrocycle) {
+                  params.macrocycleId = activeMacrocycle.id.toString();
+                  params.absoluteDay = dayInfo.absoluteDay.toString();
                 }
-              });
+                
+                router.push({
+                  pathname: '/workout',
+                  params
+                });
+              }
             }
           }
-        }
-      ]
-    );
-  } catch (error) {
-    console.error('Error iniciando rutina:', error);
-    Alert.alert('Error', 'No se pudo iniciar la rutina');
-  }
-};
+        ]
+      );
+    } catch (error) {
+      console.error('Error iniciando rutina:', error);
+      Alert.alert('Error', 'No se pudo iniciar la rutina');
+    }
+  };
 
   const handleCustomizeDay = async (absoluteDay: number, dayInfo: any) => {
     try {
@@ -439,7 +460,19 @@ const handleStartWorkout = async (routineId: number, routineName: string) => {
         return;
       }
 
-      console.log('🎨 Navegando a personalización del día', absoluteDay);
+      const alreadyTrained = await checkIfAlreadyTrained(activeMacrocycle.id, absoluteDay);
+      
+      if (alreadyTrained) {
+        Alert.alert(
+          'Día ya completado',
+          `Ya completaste el entrenamiento del día ${absoluteDay}. No se puede personalizar un día que ya fue entrenado.`,
+          [
+            { text: 'Ver Historial', onPress: () => router.push('/(tabs)/profile/workout-history') },
+            { text: 'OK', style: 'cancel' }
+          ]
+        );
+        return;
+      }
       
       router.push({
         pathname: '/(tabs)/calendar/customize-day',
@@ -456,7 +489,7 @@ const handleStartWorkout = async (routineId: number, routineName: string) => {
   };
 
   const handleDayPress = (date: Date) => {
-    const dayInfo = getDayInfo(date);
+    const dayInfo = getDayInfo(date, activeMacrocycle, dayPlans);
     
     let dayOfCycle: number | undefined;
     let isInMacrocycle = false;
@@ -484,7 +517,6 @@ const handleStartWorkout = async (routineId: number, routineName: string) => {
     setShowDayModal(true);
   };
 
-  // ========== FUNCIONES DE NAVEGACIÓN ==========
   const canNavigatePrev = () => {
     if (!activeMacrocycle) return false;
     
@@ -524,7 +556,6 @@ const handleStartWorkout = async (routineId: number, routineName: string) => {
     setMonthOffset(newOffset);
   };
 
-  // ========== FUNCIONES DE ESTILOS ==========
   const getWeekDayCircleStyles = (date: Date, dayInfo: any, isToday: boolean) => {
     const today = new Date();
     const isPast = date < today && !isToday;
@@ -555,7 +586,7 @@ const handleStartWorkout = async (routineId: number, routineName: string) => {
           textColor: isPast ? '#D1D5DB' : '#5E4B8B',
           isPast: isPast,
           hasCircle: true
-        };
+        };  
       }
     }
     
@@ -595,7 +626,7 @@ const handleStartWorkout = async (routineId: number, routineName: string) => {
           borderWidth: 2,
           textColor: isPast ? '#D1D5DB' : '#5E4B8B',
           isPast: isPast
-        };
+        };  
       }
     }
     
@@ -605,204 +636,6 @@ const handleStartWorkout = async (routineId: number, routineName: string) => {
       textColor: 'white',
       isPast: false
     };
-  };
-
-  // ========== COMPONENTES DE RENDERIZADO ==========
-  const renderTodayWorkoutButton = () => {
-    const today = new Date();
-    const dayInfo = getDayInfo(today);
-    
-    if (!activeMacrocycle) return null;
-
-    const startDate = new Date(activeMacrocycle.startDate + 'T00:00:00.000Z');
-    const checkDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const startDateNormalized = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-    const diffTime = checkDate.getTime() - startDateNormalized.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    const totalDays = activeMacrocycle.microcycleDurationDays * activeMacrocycle.totalMicrocycles;
-    
-    if (diffDays < 0 || diffDays >= totalDays) {
-      return (
-        <View style={styles.todayWorkoutContainer}>
-          <View style={[styles.workoutCard, styles.noWorkoutCard]}>
-            <View style={styles.workoutHeader}>
-              <View style={[styles.workoutIconContainer, styles.noWorkoutIconContainer]}>
-                <Ionicons name="calendar-outline" size={24} color="#9CA3AF" />
-              </View>
-              <View style={styles.workoutInfo}>
-                <Text style={styles.workoutTitle}>Hoy</Text>
-                <Text style={styles.workoutSubtitle}>No hay rutina programada</Text>
-              </View>
-              <View style={[styles.todayBadge, styles.freeDayBadge]}>
-                <Text style={styles.todayBadgeText}>LIBRE</Text>
-              </View>
-            </View>
-            
-            <View style={styles.freeDay}>
-              <Text style={styles.freeDayText}>
-                Este día no forma parte de tu macrociclo activo. Puedes descansar o hacer actividad libre.
-              </Text>
-            </View>
-          </View>
-        </View>
-      );
-    }
-
-    if (!dayInfo) {
-      return (
-        <View style={styles.todayWorkoutContainer}>
-          <View style={[styles.workoutCard, styles.noWorkoutCard]}>
-            <View style={styles.workoutHeader}>
-              <View style={[styles.workoutIconContainer, styles.noWorkoutIconContainer]}>
-                <Ionicons name="help-circle-outline" size={24} color="#F59E0B" />
-              </View>
-              <View style={styles.workoutInfo}>
-                <Text style={styles.workoutTitle}>Hoy</Text>
-                <Text style={styles.workoutSubtitle}>Sin planificación</Text>
-              </View>
-              <View style={[styles.todayBadge, styles.warningBadge]}>
-                <Text style={styles.todayBadgeText}>SIN PLAN</Text>
-              </View>
-            </View>
-            
-            <View style={styles.freeDay}>
-              <Text style={styles.freeDayText}>
-                No hay planificación para este día en tu macrociclo.
-              </Text>
-            </View>
-          </View>
-        </View>
-      );
-    }
-
-    if (dayInfo.isRestDay) {
-      return (
-        <View style={styles.todayWorkoutContainer}>
-          <View style={[styles.workoutCard, styles.restDayCard]}>
-            <View style={styles.workoutHeader}>
-              <View style={[styles.workoutIconContainer, styles.restIconContainer]}>
-                <Ionicons name="bed" size={24} color="#5E4B8B" />
-              </View>
-              <View style={styles.workoutInfo}>
-                <Text style={styles.workoutTitle}>Hoy es día de descanso</Text>
-                <Text style={styles.workoutSubtitle}>Tu cuerpo necesita recuperarse</Text>
-              </View>
-              <View style={[styles.todayBadge, styles.restBadge]}>
-                <Text style={styles.todayBadgeText}>DESCANSO</Text>
-              </View>
-            </View>
-            
-            <View style={styles.restDayContent}>
-              <View style={styles.restTips}>
-                <View style={styles.restTip}>
-                  <Ionicons name="water" size={16} color="#5E4B8B" />
-                  <Text style={styles.restTipText}>Mantente hidratado</Text>
-                </View>
-                <View style={styles.restTip}>
-                  <Ionicons name="moon" size={16} color="#5E4B8B" />
-                  <Text style={styles.restTipText}>Duerme 7-9 horas</Text>
-                </View>
-                <View style={styles.restTip}>
-                  <Ionicons name="walk" size={16} color="#5E4B8B" />
-                  <Text style={styles.restTipText}>Actividad ligera opcional</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        </View>
-      );
-    }
-
-    if (!dayInfo.routineId || !dayInfo.routineName) {
-      return (
-        <View style={styles.todayWorkoutContainer}>
-          <View style={[styles.workoutCard, styles.noRoutineCard]}>
-            <View style={styles.workoutHeader}>
-              <View style={[styles.workoutIconContainer, styles.warningIconContainer]}>
-                <Ionicons name="alert-circle" size={24} color="#F59E0B" />
-              </View>
-              <View style={styles.workoutInfo}>
-                <Text style={styles.workoutTitle}>Día de entrenamiento</Text>
-                <Text style={styles.workoutSubtitle}>Sin rutina asignada</Text>
-              </View>
-              <View style={[styles.todayBadge, styles.warningBadge]}>
-                <Text style={styles.todayBadgeText}>SIN RUTINA</Text>
-              </View>
-            </View>
-            
-            <View style={styles.noRoutineContent}>
-              <Text style={styles.noRoutineText}>
-                Hoy tienes programado entrenamiento, pero no hay una rutina específica asignada.
-              </Text>
-              
-              <TouchableOpacity
-                style={styles.createRoutineButton}
-                onPress={() => router.push('/(tabs)/routines')}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="add-circle" size={20} color="#5E4B8B" />
-                <Text style={styles.createRoutineButtonText}>Ver rutinas disponibles</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      );
-    }
-
-    const isCustomized = dayInfo.absoluteDay ? customizedDays.has(dayInfo.absoluteDay) : false;
-    
-    return (
-      <View style={styles.todayWorkoutContainer}>
-        <View style={styles.workoutCard}>
-          <View style={styles.workoutHeader}>
-            <View style={styles.workoutIconContainer}>
-              <Ionicons name="barbell" size={24} color="#5E4B8B" />
-            </View>
-            <View style={styles.workoutInfo}>
-              <Text style={styles.workoutTitle}>Entrenamiento de hoy</Text>
-              <Text style={styles.workoutSubtitle}>{dayInfo.routineName}</Text>
-              {isCustomized && (
-                <Text style={styles.customizationSubtitle}>
-                  Has personalizado algunos ejercicios
-                </Text>
-              )}
-            </View>
-            <View style={styles.todayBadge}>
-              <Text style={styles.todayBadgeText}>HOY</Text>
-            </View>
-          </View>
-          
-          <View style={styles.workoutButtonsContainer}>
-            <TouchableOpacity
-              style={styles.startWorkoutButton}
-              onPress={() => handleStartWorkout(dayInfo.routineId, dayInfo.routineName!)}
-              activeOpacity={0.9}
-            >
-              <View style={styles.startButtonContent}>
-                <Ionicons name="play-circle" size={24} color="white" />
-                <Text style={styles.startButtonText}>Comenzar Entrenamiento</Text>
-                <Ionicons name="arrow-forward" size={20} color="white" />
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.customizeTodayButton}
-              onPress={() => {
-                if (dayInfo.absoluteDay) {
-                  handleCustomizeDay(dayInfo.absoluteDay, dayInfo);
-                }
-              }}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="settings" size={18} color="#5E4B8B" />
-              <Text style={styles.customizeTodayButtonText}>
-                Editar rutina
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    );
   };
 
   const renderWeekView = () => (
@@ -820,7 +653,9 @@ const handleStartWorkout = async (routineId: number, routineName: string) => {
           />
         </TouchableOpacity>
         
-        <Text style={styles.navigationTitle}>{getNavigationTitle()}</Text>
+        <Text style={styles.navigationTitle}>
+          {getNavigationTitle(viewMode, currentWeek, monthOffset)}
+        </Text>
         
         <TouchableOpacity 
           onPress={() => changeWeek('next')} 
@@ -837,8 +672,9 @@ const handleStartWorkout = async (routineId: number, routineName: string) => {
 
       <View style={styles.weekContainer}>
         {currentWeek.map((date, index) => {
-          const dayInfo = getDayInfo(date);
+          const dayInfo = getDayInfo(date, activeMacrocycle, dayPlans);
           const isToday = date.toDateString() === new Date().toDateString();
+          const isCustomized = isDayCustomized(date);
           const circleStyles = getWeekDayCircleStyles(date, dayInfo, isToday);
           
           return (
@@ -898,11 +734,15 @@ const handleStartWorkout = async (routineId: number, routineName: string) => {
               
               {dayInfo && !isToday && (
                 <View style={styles.dayTypeIndicator}>
-                  <Ionicons 
-                    name={dayInfo.isRestDay ? "bed" : "barbell"} 
-                    size={12} 
-                    color={dayInfo.isRestDay ? '#5E4B8B' : '#5E4B8B'} 
-                  />
+                  {isCustomized ? (
+                    <Ionicons name="settings" size={12} color="#5E4B8B" />
+                  ) : (
+                    <Ionicons 
+                      name={dayInfo.isRestDay ? "bed" : "barbell"} 
+                      size={12} 
+                      color={dayInfo.isRestDay ? '#5E4B8B' : '#5E4B8B'} 
+                    />
+                  )}
                 </View>
               )}
             </TouchableOpacity>
@@ -927,7 +767,9 @@ const handleStartWorkout = async (routineId: number, routineName: string) => {
           />
         </TouchableOpacity>
         
-        <Text style={styles.navigationTitle}>{getNavigationTitle()}</Text>
+        <Text style={styles.navigationTitle}>
+          {getNavigationTitle(viewMode, currentWeek, monthOffset)}
+        </Text>
         
         <TouchableOpacity 
           onPress={() => changeMonth('next')} 
@@ -952,9 +794,10 @@ const handleStartWorkout = async (routineId: number, routineName: string) => {
         {currentMonth.map((week, weekIndex) => (
           <View key={weekIndex} style={styles.monthWeekRow}>
             {week.map((date, dayIndex) => {
-              const dayInfo = getDayInfo(date);
+              const dayInfo = getDayInfo(date, activeMacrocycle, dayPlans);
               const isToday = date.toDateString() === new Date().toDateString();
-              const isThisMonth = isCurrentMonth(date);
+              const isThisMonth = isCurrentMonth(date, monthOffset);
+              const isCustomized = isDayCustomized(date);
               
               return (
                 <TouchableOpacity 
@@ -1015,10 +858,14 @@ const handleStartWorkout = async (routineId: number, routineName: string) => {
                   
                   {dayInfo && isThisMonth && !isToday && (
                     <View style={styles.monthDayIndicator}>
-                      <View style={[
-                        styles.monthIndicatorDot,
-                        { backgroundColor: dayInfo.isRestDay ? '#9CA3AF' : '#5E4B8B' }
-                      ]} />
+                      {isCustomized ? (
+                        <View style={[styles.monthIndicatorDot, { backgroundColor: '#5E4B8B' }]} />
+                      ) : (
+                        <View style={[
+                          styles.monthIndicatorDot,
+                          { backgroundColor: dayInfo.isRestDay ? '#9CA3AF' : '#5E4B8B' }
+                        ]} />
+                      )}
                     </View>
                   )}
                 </TouchableOpacity>
@@ -1030,353 +877,214 @@ const handleStartWorkout = async (routineId: number, routineName: string) => {
     </>
   );
 
-  const renderDayModal = () => {
-    if (!selectedDayInfo) return null;
-
-    const { date, dayPlan, dayOfCycle, absoluteDay, isInMacrocycle } = selectedDayInfo;
-    const isToday = date.toDateString() === new Date().toDateString();
-    const isPast = date < new Date() && !isToday;
-    const isCustomized = absoluteDay ? customizedDays.has(absoluteDay) : false;
-
-    const formatFullDate = (date: Date) => {
-      return date.toLocaleDateString('es-ES', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-      });
-    };
-
-    const getStatusIcon = () => {
-      if (isToday) return 'today';
-      if (!isInMacrocycle) return 'calendar-outline';
-      if (dayPlan?.isRestDay) return 'bed';
-      return 'barbell';
-    };
-
-    const getStatusText = () => {
-      if (isToday) return 'Hoy';
-      if (!isInMacrocycle) return 'Fuera del macrociclo';
-      if (dayPlan?.isRestDay) return 'Día de descanso';
-      return 'Día de entrenamiento';
-    };
-
-    return (
-      <Modal
-        visible={showDayModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowDayModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <SafeAreaView style={styles.modalContainer}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <View style={styles.modalHeaderLeft}>
-                  <View style={styles.modalIcon}>
-                    <Ionicons name={getStatusIcon()} size={24} color="white" />
-                  </View>
-                  <View>
-                    <Text style={styles.modalDate}>
-                      {formatFullDate(date)}
-                    </Text>
-                    <Text style={styles.modalStatus}>
-                      {getStatusText()}
-                    </Text>
-                  </View>
-                </View>
-                <TouchableOpacity
-                  style={styles.modalCloseButton}
-                  onPress={() => setShowDayModal(false)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="close" size={24} color="#6B7280" />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.modalBody}>
-                {isInMacrocycle && dayPlan ? (
-                  <>
-                    <View style={styles.infoSection}>
-                      <View style={styles.infoItem}>
-                        <View style={styles.infoIconContainer}>
-                          <Ionicons name="layers-outline" size={18} color="#5E4B8B" />
-                        </View>
-                        <View style={styles.infoTextContainer}>
-                          <Text style={styles.infoLabel}>Día del microciclo</Text>
-                          <Text style={styles.infoValue}>Día {dayOfCycle} de {activeMacrocycle?.microcycleDurationDays}</Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.infoItem}>
-                        <View style={styles.infoIconContainer}>
-                          <Ionicons name="calendar-clear-outline" size={18} color="#5E4B8B" />
-                        </View>
-                        <View style={styles.infoTextContainer}>
-                          <Text style={styles.infoLabel}>Macrociclo</Text>
-                          <Text style={styles.infoValue}>{activeMacrocycle?.name}</Text>
-                        </View>
-                      </View>
-
-                      {absoluteDay && (
-                        <View style={styles.infoItem}>
-                          <View style={styles.infoIconContainer}>
-                            <Ionicons name="calendar-number-outline" size={18} color="#5E4B8B" />
-                          </View>
-                          <View style={styles.infoTextContainer}>
-                            <Text style={styles.infoLabel}>Día absoluto</Text>
-                            <Text style={styles.infoValue}>Día {absoluteDay} del macrociclo</Text>
-                          </View>
-                        </View>
-                      )}
-                    </View>
-
-                    <View style={styles.activitySection}>
-                      <Text style={styles.sectionTitle}>Actividad del día</Text>
-                      <View style={styles.activityCard}>
-                        <View style={styles.activityHeader}>
-                          <View style={styles.activityIcon}>
-                            <Ionicons 
-                              name={dayPlan.isRestDay ? 'bed' : 'barbell'} 
-                              size={20} 
-                              color="white" 
-                            />
-                          </View>
-                          <Text style={styles.activityTitle}>
-                            {dayPlan.isRestDay ? 'Día de descanso' : 'Entrenamiento'}
-                          </Text>
-                        </View>
-                        
-                        {dayPlan.isRestDay ? (
-                          <Text style={styles.activityDescription}>
-                            Dedica este día a la recuperación. Tu cuerpo necesita tiempo para adaptarse y crecer más fuerte.
-                          </Text>
-                        ) : (
-                          <View>
-                            <Text style={styles.activityDescription}>
-                              {dayPlan.routineName || 'Rutina no asignada'}
-                            </Text>
-                            {!dayPlan.routineName && (
-                              <Text style={styles.noRoutineText}>
-                                Este día tiene entrenamiento programado pero no hay rutina asignada.
-                              </Text>
-                            )}
-                            {isCustomized && dayPlan.routineName && (
-                              <View style={styles.customizationInfo}>
-                                <Ionicons name="information-circle" size={14} color="#5E4B8B" />
-                                <Text style={styles.customizationInfoText}>
-                                  Has personalizado algunos ejercicios para este día
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-                        )}
-                      </View>
-                    </View>
-
-                    {!dayPlan.isRestDay && dayPlan.routineName && dayPlan.routineId && (
-                      <View style={styles.actionsSection}>
-                        <View style={styles.actionButtonsRow}>
-                          {isToday && (
-                            <TouchableOpacity
-                              style={styles.startWorkoutButton}
-                              onPress={() => {
-                                setShowDayModal(false);
-                                handleStartWorkout(dayPlan.routineId!, dayPlan.routineName!);
-                              }}
-                              activeOpacity={0.8}
-                            >
-                              <Ionicons name="play" size={18} color="white" />
-                              <Text style={styles.startWorkoutButtonText}>Iniciar</Text>
-                            </TouchableOpacity>
-                          )}
-
-                          <TouchableOpacity
-                            style={[
-                              styles.customizeButton,
-                              !isToday && styles.customizeButtonFullWidth
-                            ]}
-                            onPress={() => {
-                              setShowDayModal(false);
-                              if (absoluteDay) {
-                                handleCustomizeDay(absoluteDay, dayPlan);
-                              }
-                            }}
-                            activeOpacity={0.8}
-                          >
-                            <Ionicons name="settings" size={18} color="#5E4B8B" />
-                            <Text style={styles.customizeButtonText}>
-                              Editar Rutina
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-
-                        {!isToday && !isPast && (
-                          <View style={styles.infoMessage}>
-                            <Ionicons name="information-circle" size={16} color="#6B7280" />
-                            <Text style={styles.infoMessageText}>
-                              Solo puedes iniciar entrenamientos en el día actual
-                            </Text>
-                          </View>
-                        )}
-
-                        {isPast && (
-                          <View style={styles.infoMessage}>
-                            <Ionicons name="time" size={16} color="#6B7280" />
-                            <Text style={styles.infoMessageText}>
-                              Este día ya ha pasado
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    )}
-                  </>
-                ) : (
-                  <View style={styles.emptyDaySection}>
-                    <View style={styles.emptyDayIcon}>
-                      <Ionicons name="calendar-outline" size={48} color="#D1D5DB" />
-                    </View>
-                    <Text style={styles.emptyDayTitle}>
-                      Día libre
-                    </Text>
-                    <Text style={styles.emptyDayDescription}>
-                      Este día no forma parte de tu macrociclo activo. Puedes usarlo para descanso adicional o actividades libres.
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          </SafeAreaView>
-        </View>
-      </Modal>
-    );
-  };
-
-  // ========== RENDERIZADO PRINCIPAL ==========
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#5E4B8B" />
-        <Text style={styles.loadingText}>Verificando macrociclo activo...</Text>
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#5E4B8B" />
+          <Text style={styles.loadingText}>Verificando macrociclo activo...</Text>
+        </View>
       </View>
     );
   }
 
   if (!activeMacrocycle) {
     return (
-      <View style={styles.emptyContainer}>
-        <View style={styles.emptyIconContainer}>
-          <Ionicons name="calendar-outline" size={80} color="#D1D5DB" />
-        </View>
-        <Text style={styles.emptyTitle}>No hay macrociclo activo</Text>
-        <Text style={styles.emptySubtitle}>
-          Para ver tu calendario de entrenamientos, primero debes activar un macrociclo
-        </Text>
-        
-        <View style={styles.emptyActions}>
-          <TouchableOpacity 
-            style={styles.primaryEmptyButton}
-            onPress={() => router.push('/(tabs)/macrociclo')}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="layers" size={20} color="white" />
-            <Text style={styles.primaryEmptyButtonText}>Ver Macrociclos</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.secondaryEmptyButton}
-            onPress={() => router.push('/(tabs)/macrociclo/create')}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="add" size={20} color="#5E4B8B" />
-            <Text style={styles.secondaryEmptyButtonText}>Crear Macrociclo</Text>
-          </TouchableOpacity>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.headerTitle}>Mi Calendario</Text>
+              <Text style={styles.headerSubtitle}>
+                No hay macrociclo activo
+              </Text>
+            </View>
+          </View>
         </View>
 
-        <View style={styles.infoCard}>
-          <View style={styles.infoHeader}>
-            <Ionicons name="information-circle" size={20} color="#5E4B8B" />
-            <Text style={styles.infoCardTitle}>¿Qué es un macrociclo?</Text>
+        <ScrollView 
+          style={styles.content}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconContainer}>
+              <Ionicons name="calendar" size={64} color="#5E4B8B" />
+            </View>
+            <Text style={styles.emptyTitle}>No hay macrociclo activo</Text>
+            <Text style={styles.emptySubtitle}>
+              Para ver tu calendario de entrenamientos, primero debes activar un macrociclo
+            </Text>
+            
+            <View style={styles.emptyActions}>
+              <TouchableOpacity 
+                style={styles.primaryEmptyButton}
+                onPress={() => router.push('/(tabs)/macrocycle')}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="layers" size={20} color="white" />
+                <Text style={styles.primaryEmptyButtonText}>Ver Macrociclos</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.secondaryEmptyButton}
+                onPress={() => router.push('/(tabs)/macrocycle/create')}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="add" size={20} color="#5E4B8B" />
+                <Text style={styles.secondaryEmptyButtonText}>Crear Macrociclo</Text>
+              </TouchableOpacity>
+            </View>
+
+            {showInfoCard && currentUsername && (
+              <View style={styles.infoCard}>
+                <View style={styles.infoHeader}>
+                  <View style={styles.infoHeaderLeft}>
+                    <Ionicons name="information-circle" size={20} color="#5E4B8B" />
+                    <Text style={styles.infoCardTitle}>Información</Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.closeButton}
+                    onPress={hideInfoCard}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="close" size={18} color="#8B7AB8" />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.infoCardText}>
+                  Solo puede haber un macrociclo activo a la vez. Podrás editar de forma personalizada tus rutinas.
+                </Text>
+              </View>
+            )}
           </View>
-          <Text style={styles.infoCardText}>
-            Un macrociclo es tu plan de entrenamiento a largo plazo que organiza tus rutinas y días de descanso durante varias semanas.
-          </Text>
-        </View>
+        </ScrollView>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.headerCard}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.macrocycleName}>{activeMacrocycle.name}</Text>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>ACTIVO</Text>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerTitle}>Mi Calendario</Text>
+            <Text style={styles.headerSubtitle}>
+              {activeMacrocycle.name} - Activo
+            </Text>
           </View>
-        </View>
-        
-        <View style={styles.viewToggle}>
-          <TouchableOpacity 
-            style={[styles.toggleButton, viewMode === 'week' && styles.toggleButtonActive]}
-            onPress={() => setViewMode('week')}
-          >
-            <Ionicons 
-              name="calendar" 
-              size={16} 
-              color={viewMode === 'week' ? 'white' : '#5E4B8B'} 
-            />
-            <Text style={[
-              styles.toggleButtonText,
-              viewMode === 'week' && styles.toggleButtonTextActive
-            ]}>
-              Semana
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.toggleButton, viewMode === 'month' && styles.toggleButtonActive]}
-            onPress={() => setViewMode('month')}
-          >
-            <Ionicons 
-              name="grid" 
-              size={16} 
-              color={viewMode === 'month' ? 'white' : '#5E4B8B'} 
-            />
-            <Text style={[
-              styles.toggleButtonText,
-              viewMode === 'month' && styles.toggleButtonTextActive
-            ]}>
-              Mes
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.viewToggle}>
+            <TouchableOpacity 
+              style={[styles.toggleButton, viewMode === 'week' && styles.toggleButtonActive]}
+              onPress={() => setViewMode('week')}
+            >
+              <Ionicons 
+                name="calendar" 
+                size={16} 
+                color={viewMode === 'week' ? 'white' : '#5E4B8B'} 
+              />
+              <Text style={[
+                styles.toggleButtonText,
+                viewMode === 'week' && styles.toggleButtonTextActive
+              ]}>
+                Semana
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.toggleButton, viewMode === 'month' && styles.toggleButtonActive]}
+              onPress={() => setViewMode('month')}
+            >
+              <Ionicons 
+                name="grid" 
+                size={16} 
+                color={viewMode === 'month' ? 'white' : '#5E4B8B'} 
+              />
+              <Text style={[
+                styles.toggleButtonText,
+                viewMode === 'month' && styles.toggleButtonTextActive
+              ]}>
+                Mes
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
-      {viewMode === 'week' ? renderWeekView() : renderMonthView()}
+      <ScrollView 
+        style={styles.content}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {viewMode === 'week' ? renderWeekView() : renderMonthView()}
 
-      {renderTodayWorkoutButton()}
+        <TodayWorkoutButton
+          activeMacrocycle={activeMacrocycle}
+          dayPlans={dayPlans}
+          customizedDays={customizedDays}
+          onStartWorkout={handleStartWorkout}
+          onCustomizeDay={handleCustomizeDay}
+          onNavigateToRoutines={() => router.push('/(tabs)/routines')}
+          onNavigateToHistory={() => router.push('/(tabs)/profile/workout-history')}
+          token={token}
+        />
 
-      {renderDayModal()}
-    </ScrollView>
+        <DayModal
+          visible={showDayModal}
+          selectedDayInfo={selectedDayInfo}
+          activeMacrocycle={activeMacrocycle}
+          customizedDays={customizedDays}
+          onClose={() => setShowDayModal(false)}
+          onStartWorkout={handleStartWorkout}
+          onCustomizeDay={handleCustomizeDay}
+          token={token}
+        />
+      </ScrollView>
+    </View>
   );
 };
-
-// ============================================================================
-// ESTILOS
-// ============================================================================
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FAFAFA',
-    padding: 20,
+  },
+  header: {
+    backgroundColor: 'white',
+    paddingTop: 20,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#D6CDE8',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerTextContainer: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#2D1B4E',
+    marginBottom: 2,
+  },
+  headerSubtitle: {
+    fontSize: 15,
+    color: '#6B5B95',
+    fontWeight: '400',
+  },
+  content: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 40,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FAFAFA',
   },
   loadingText: {
     marginTop: 10,
@@ -1384,27 +1092,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
-    backgroundColor: '#FAFAFA',
+    justifyContent: 'center',
+    paddingVertical: 80,
+    paddingHorizontal: 40,
   },
   emptyIconContainer: {
     width: 120,
     height: 120,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F3F4F6',
     borderRadius: 60,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
     borderWidth: 3,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 2,
+    borderColor: '#D6CDE8',
+    shadowColor: '#5E4B8B',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 24,
+    elevation: 4,
   },
   emptyTitle: {
     fontSize: 24,
@@ -1465,43 +1172,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-  headerCard: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  headerLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flexWrap: 'wrap',
-  },
-  macrocycleName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  badge: {
-    backgroundColor: '#5E4B8B',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  badgeText: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: '700',
-  },
   viewToggle: {
     flexDirection: 'row',
     backgroundColor: '#F3F4F6',
@@ -1527,252 +1197,50 @@ const styles = StyleSheet.create({
   toggleButtonTextActive: {
     color: 'white',
   },
-  
   infoCard: {
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: '#FBF9FE',
+    borderRadius: 16,
+    padding: 20,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#EFEDFB',
   },
   infoHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  infoHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    marginBottom: 8,
   },
   infoCardTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#5E4B8B',
+  },
+  closeButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   infoCardText: {
     fontSize: 14,
     color: '#6B7280',
     lineHeight: 20,
   },
-
-  // Estilos del botón de hoy
-  todayWorkoutContainer: {
-    marginBottom: 20,
-  },
-  workoutCard: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: '#5E4B8B',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  noWorkoutCard: {
-    borderLeftColor: '#9CA3AF',
-  },
-  restDayCard: {
-    borderLeftColor: '#5E4B8B',
-  },
-  noRoutineCard: {
-    borderLeftColor: '#F59E0B',
-  },
-  workoutHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  workoutIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#EDE9FE',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  noWorkoutIconContainer: {
-    backgroundColor: '#F3F4F6',
-  },
-  restIconContainer: {
-    backgroundColor: '#EDE9FE',
-  },
-  warningIconContainer: {
-    backgroundColor: '#FEF3C7',
-  },
-  workoutInfo: {
-    flex: 1,
-  },
-  workoutTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 2,
-  },
-  workoutSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  customizationSubtitle: {
-    fontSize: 12,
-    color: '#5E4B8B',
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  todayBadge: {
-    backgroundColor: '#5E4B8B',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  freeDayBadge: {
-    backgroundColor: '#9CA3AF',
-  },
-  restBadge: {
-    backgroundColor: '#5E4B8B',
-  },
-  warningBadge: {
-    backgroundColor: '#F59E0B',
-  },
-  todayBadgeText: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-
-  freeDay: {
-    backgroundColor: '#F8FAFC',
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 4,
-  },
-  freeDayText: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-
-  restDayContent: {
-    backgroundColor: '#EDE9FE',
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 4,
-  },
-  restTips: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  restTip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 4,
-  },
-  restTipText: {
-    fontSize: 12,
-    color: '#5E4B8B',
-    fontWeight: '600',
-  },
-
-  noRoutineContent: {
-    backgroundColor: '#FFFBEB',
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 4,
-  },
-  noRoutineText: {
-    fontSize: 14,
-    color: '#D97706',
-    lineHeight: 20,
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  createRoutineButton: {
-    backgroundColor: 'white',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#5E4B8B',
-    gap: 8,
-  },
-  createRoutineButtonText: {
-    color: '#5E4B8B',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-
-  workoutButtonsContainer: {
-    gap: 12,
-  },
-
-  startWorkoutButton: {
-    backgroundColor: '#5E4B8B',
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    shadowColor: '#5E4B8B',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  startButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  startButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '700',
-    flex: 1,
-    textAlign: 'center',
-  },
-
-  customizeTodayButton: {
-    backgroundColor: '#EDE9FE',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  customizeTodayButtonText: {
-    color: '#5E4B8B',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  
   navigation: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
-    paddingHorizontal: 10,
+    paddingHorizontal: 20,
+    marginTop: 20,
   },
   navButton: {
     padding: 8,
@@ -1786,8 +1254,6 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     textTransform: 'capitalize',
   },
-  
-  // Vista semanal
   weekContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -1795,6 +1261,7 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 16,
     marginBottom: 20,
+    marginHorizontal: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -1824,7 +1291,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     position: 'relative',
   },
-  
   strikethroughLineWeek: {
     position: 'absolute',
     top: '50%',
@@ -1834,7 +1300,6 @@ const styles = StyleSheet.create({
     transform: [{ translateY: -1 }],
     zIndex: 1,
   },
-  
   dayNumberContainer: {
     width: 40,
     height: 40,
@@ -1842,17 +1307,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
-  
   dayNumberNoCircle: {
     fontSize: 15,
     fontWeight: '600',
     textAlign: 'center',
   },
-  
   dayNumberPast: {
     opacity: 0.6,
   },
-  
   todayCircle: {
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.3,
@@ -1876,8 +1338,6 @@ const styles = StyleSheet.create({
   dayTypeIndicator: {
     marginTop: 2,
   },
-
-  // Vista mensual
   monthDaysHeader: {
     flexDirection: 'row',
     backgroundColor: '#5E4B8B',
@@ -1885,6 +1345,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
+    marginHorizontal: 20,
   },
   monthDayHeaderText: {
     flex: 1,
@@ -1900,6 +1361,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
     marginBottom: 20,
+    marginHorizontal: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -1924,7 +1386,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
   },
-  
   strikethroughLine: {
     position: 'absolute',
     top: '50%',
@@ -1949,7 +1410,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
-  
   monthDayNumberNoCircle: {
     fontSize: 13,
     fontWeight: '500',
@@ -1963,7 +1423,6 @@ const styles = StyleSheet.create({
     color: '#D1D5DB',
     opacity: 0.5,
   },
-  
   todayMonthLabel: {
     fontSize: 7,
     color: '#5E4B8B',
@@ -1987,242 +1446,6 @@ const styles = StyleSheet.create({
   },
   otherMonthText: {
     color: '#D1D5DB !important',
-  },
-
-  // Estilos del modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContainer: {
-    width: width - 40,
-    maxWidth: 400,
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 25,
-    elevation: 10,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 24,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  modalHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  modalIcon: {
-    width: 48,
-    height: 48,
-    backgroundColor: '#5E4B8B',
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  modalDate: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 2,
-    textTransform: 'capitalize',
-  },
-  modalStatus: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#5E4B8B',
-  },
-  modalCloseButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F8FAFC',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalBody: {
-    padding: 24,
-    paddingTop: 16,
-  },
-
-  // Sección de información del modal
-  infoSection: {
-    marginBottom: 24,
-  },
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  infoIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  infoTextContainer: {
-    flex: 1,
-  },
-  infoLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  infoValue: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#1F2937',
-  },
-
-  // Sección de actividad del modal
-  activitySection: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 12,
-  },
-  activityCard: {
-    backgroundColor: '#FAFBFC',
-    borderRadius: 12,
-    padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#5E4B8B'
-  },
-  activityHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  activityIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-    backgroundColor: '#5E4B8B'
-  },
-  activityTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  activityDescription: {
-    fontSize: 14,
-    color: '#4B5563',
-    lineHeight: 20,
-  },
-
-  customizationInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    backgroundColor: '#F3E8FF',
-    padding: 8,
-    borderRadius: 8,
-  },
-  customizationInfoText: {
-    fontSize: 12,
-    color: '#5E4B8B',
-    fontWeight: '500',
-    flex: 1,
-  },
-
-  // Botones de acción en modal
-  actionsSection: {
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-    paddingTop: 16,
-  },
-  actionButtonsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
-  },
-  startWorkoutButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  customizeButton: {
-    flex: 1,
-    backgroundColor: '#EDE9FE',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
-    gap: 6,
-  },
-  customizeButtonFullWidth: {
-    flex: 1,
-  },
-  customizeButtonText: {
-    color: '#5E4B8B',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-
-  // Mensajes informativos en modal
-  infoMessage: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8F9FA',
-    padding: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  infoMessageText: {
-    fontSize: 13,
-    color: '#6B7280',
-    flex: 1,
-    fontStyle: 'italic',
-  },
-
-  // Día vacío en el modal
-  emptyDaySection: {
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  emptyDayIcon: {
-    marginBottom: 16,
-  },
-  emptyDayTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  emptyDayDescription: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 20,
   },
 });
 

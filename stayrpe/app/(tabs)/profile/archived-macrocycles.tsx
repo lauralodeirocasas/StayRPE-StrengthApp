@@ -29,11 +29,15 @@ const ArchivedMacrocyclesScreen = () => {
   const [archivedMacrocycles, setArchivedMacrocycles] = useState<ArchivedMacrocycle[]>([]);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
+  const [currentUsername, setCurrentUsername] = useState<string | null>(null);
   const [unarchivingId, setUnarchivingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [showInfoCard, setShowInfoCard] = useState(true);
   const router = useRouter();
 
   const API_URL = 'http://192.168.0.57:8080';
+
+  const getInfoCardKey = (username: string) => `archived_macrocycles_info_hidden_${username}`;
 
   useEffect(() => {
     const getToken = async () => {
@@ -46,6 +50,46 @@ const ArchivedMacrocyclesScreen = () => {
     };
     getToken();
   }, []);
+
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      if (!token) return;
+
+      try {
+        const response = await fetch(`${API_URL}/user/profile`, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const userData = await response.json();
+          setCurrentUsername(userData.username);
+        }
+      } catch (error) {
+        console.error('Error obteniendo usuario actual:', error);
+      }
+    };
+
+    getCurrentUser();
+  }, [token]);
+
+  useEffect(() => {
+    const checkInfoCardVisibility = async () => {
+      if (!currentUsername) return;
+
+      try {
+        const userSpecificKey = getInfoCardKey(currentUsername);
+        const isHidden = await AsyncStorage.getItem(userSpecificKey);
+        setShowInfoCard(isHidden !== 'true');
+      } catch (error) {
+        console.error('Error checking info card visibility:', error);
+      }
+    };
+
+    checkInfoCardVisibility();
+  }, [currentUsername]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -193,6 +237,18 @@ const ArchivedMacrocyclesScreen = () => {
     );
   };
 
+  const hideInfoCard = async () => {
+    if (!currentUsername) return;
+
+    try {
+      const userSpecificKey = getInfoCardKey(currentUsername);
+      await AsyncStorage.setItem(userSpecificKey, 'true');
+      setShowInfoCard(false);
+    } catch (error) {
+      console.error('Error hiding info card:', error);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
@@ -235,7 +291,6 @@ const ArchivedMacrocyclesScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity
@@ -254,12 +309,34 @@ const ArchivedMacrocyclesScreen = () => {
         </View>
       </View>
 
-      {/* Contenido */}
       <ScrollView 
         style={styles.content}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {archivedMacrocycles.length > 0 && showInfoCard && currentUsername && (
+          <View style={styles.infoCard}>
+            <View style={styles.infoHeader}>
+              <View style={styles.infoHeaderLeft}>
+                <Ionicons name="information-circle" size={20} color="#5E4B8B" />
+                <Text style={styles.infoTitle}>Información</Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={hideInfoCard}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={18} color="#8B7AB8" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.infoText}>
+              • Los macrociclos archivados no cuentan para el límite de 3 activos{'\n'}
+              • Puedes desarchivar un macrociclo para volver a usarlo{'\n'}
+              • La eliminación permanente no se puede deshacer
+            </Text>
+          </View>
+        )}
+        
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#5E4B8B" />
@@ -359,22 +436,7 @@ const ArchivedMacrocyclesScreen = () => {
               </View>
             ))}
           </View>
-        )}
-
-        {/* Info card */}
-        {archivedMacrocycles.length > 0 && (
-          <View style={styles.infoCard}>
-            <View style={styles.infoHeader}>
-              <Ionicons name="information-circle" size={20} color="#5E4B8B" />
-              <Text style={styles.infoTitle}>Información</Text>
-            </View>
-            <Text style={styles.infoText}>
-              • Los macrociclos archivados no cuentan para el límite de 3 activos{'\n'}
-              • Puedes desarchivar un macrociclo para volver a usarlo{'\n'}
-              • La eliminación permanente no se puede deshacer
-            </Text>
-          </View>
-        )}
+        )}        
       </ScrollView>
     </View>
   );
@@ -593,20 +655,33 @@ const styles = StyleSheet.create({
     backgroundColor: '#FBF9FE',
     borderRadius: 16,
     padding: 20,
-    marginTop: 8,
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: '#EFEDFB',
   },
   infoHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
     marginBottom: 12,
+  },
+  infoHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   infoTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#5E4B8B',
+  },
+  closeButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

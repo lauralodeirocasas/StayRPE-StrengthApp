@@ -32,7 +32,6 @@ interface UserProfile {
 const EditProfileScreen = () => {
   const router = useRouter();
   
-  // Estados del formulario
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [age, setAge] = useState('');
@@ -42,7 +41,6 @@ const EditProfileScreen = () => {
   const [fitnessGoal, setFitnessGoal] = useState('improve_fitness');
   const [experienceLevel, setExperienceLevel] = useState('beginner');
   
-  // Estados de control
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [token, setToken] = useState<string | null>(null);
@@ -130,7 +128,6 @@ const EditProfileScreen = () => {
         const data: UserProfile = await response.json();
         setOriginalProfile(data);
         
-        // Rellenar el formulario con los datos existentes
         setFirstName(data.firstName || '');
         setLastName(data.lastName || '');
         setAge(data.age?.toString() || '');
@@ -234,11 +231,7 @@ const EditProfileScreen = () => {
       }
 
       if (response.ok) {
-        Alert.alert(
-          'Perfil Actualizado',
-          'Tu información ha sido actualizada correctamente',
-          [{ text: 'OK', onPress: () => router.back() }]
-        );
+        router.back()
       } else {
         const data = await response.json();
         Alert.alert('Error', data.error || 'Error al actualizar el perfil');
@@ -282,7 +275,6 @@ const EditProfileScreen = () => {
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity
@@ -320,7 +312,6 @@ const EditProfileScreen = () => {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Información Personal */}
         <View style={styles.formCard}>
           <View style={styles.cardHeader}>
             <View style={styles.headerLeft}>
@@ -410,7 +401,6 @@ const EditProfileScreen = () => {
           </View>
         </View>
 
-        {/* Sexo */}
         <View style={styles.formCard}>
           <View style={styles.cardHeader}>
             <View style={styles.headerLeft}>
@@ -446,12 +436,11 @@ const EditProfileScreen = () => {
           </View>
         </View>
 
-        {/* Objetivo de Fitness */}
         <View style={styles.formCard}>
           <View style={styles.cardHeader}>
             <View style={styles.headerLeft}>
               <View style={styles.iconContainer}>
-                <Ionicons name="target" size={20} color="#5E4B8B" />
+                <Ionicons name="locate" size={20} color="#5E4B8B" />
               </View>
               <View>
                 <Text style={styles.cardTitle}>Objetivo de Fitness</Text>
@@ -487,7 +476,6 @@ const EditProfileScreen = () => {
           </View>
         </View>
 
-        {/* Nivel de Experiencia */}
         <View style={styles.formCard}>
           <View style={styles.cardHeader}>
             <View style={styles.headerLeft}>
@@ -527,17 +515,6 @@ const EditProfileScreen = () => {
             ))}
           </View>
         </View>
-
-        {/* Nota informativa */}
-        <View style={styles.infoCard}>
-          <View style={styles.infoHeader}>
-            <Ionicons name="information-circle" size={20} color="#5E4B8B" />
-            <Text style={styles.infoTitle}>Información</Text>
-          </View>
-          <Text style={styles.infoText}>
-            Esta información nos ayuda a personalizar tu experiencia de entrenamiento y generar recomendaciones más precisas.
-          </Text>
-        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -547,6 +524,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FAFAFA',
+    marginBottom:30
   },
   loadingContainer: {
     flex: 1,
@@ -690,7 +668,6 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     fontWeight: '400',
   },
-  // Estilos para sexo - formato pastilla
   sexOptionsContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -724,7 +701,6 @@ const styles = StyleSheet.create({
     color: "#fff9db",
     fontWeight: "700",
   },
-  // Estilos para objetivos de fitness
   goalsList: {
     gap: 12,
   },
@@ -757,7 +733,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
   },
-  // Estilos para nivel de experiencia
   experienceList: {
     gap: 12,
   },

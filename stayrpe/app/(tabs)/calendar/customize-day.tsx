@@ -17,10 +17,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
-// ============================================================================
-// INTERFACES
-// ============================================================================
-
 interface SetInfo {
   setId: number;
   setNumber: number;
@@ -86,39 +82,24 @@ interface EditingSet {
   exerciseName: string;
 }
 
-// ============================================================================
-// COMPONENTE PRINCIPAL
-// ============================================================================
-
 const CustomizeDayScreen = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
-
-  // ============================================================================
-  // CONSTANTES
-  // ============================================================================
 
   const API_URL = 'http://192.168.0.57:8080';
   const macrocycleId = params.macrocycleId as string;
   const absoluteDay = parseInt(params.absoluteDay as string);
   const routineName = params.routineName as string;
 
-  // ============================================================================
-  // ESTADOS
-  // ============================================================================
-
-  // Estados principales
   const [dayData, setDayData] = useState<DayCustomizationResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Estados para modal de edición
   const [editingSet, setEditingSet] = useState<EditingSet | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
 
-  // Estados para formulario de edición
   const [tempRepsMin, setTempRepsMin] = useState('');
   const [tempRepsMax, setTempRepsMax] = useState('');
   const [tempWeight, setTempWeight] = useState('');
@@ -126,14 +107,8 @@ const CustomizeDayScreen = () => {
   const [tempNotes, setTempNotes] = useState('');
   const [intensityType, setIntensityType] = useState<'RIR' | 'RPE'>('RIR');
 
-  // Estado para InfoCard
   const [showInfoCard, setShowInfoCard] = useState(true);
 
-  // ============================================================================
-  // EFFECTS
-  // ============================================================================
-
-  // Cargar token
   useEffect(() => {
     const getToken = async () => {
       const storedToken = await AsyncStorage.getItem("token");
@@ -142,7 +117,6 @@ const CustomizeDayScreen = () => {
     getToken();
   }, []);
 
-  // Cargar preferencia de InfoCard
   useEffect(() => {
     const loadInfoCardPreference = async () => {
       try {
@@ -157,7 +131,6 @@ const CustomizeDayScreen = () => {
     loadInfoCardPreference();
   }, []);
 
-  // Cargar datos del día cuando el componente recibe foco
   useFocusEffect(
     React.useCallback(() => {
       if (token && macrocycleId && absoluteDay) {
@@ -165,10 +138,6 @@ const CustomizeDayScreen = () => {
       }
     }, [token, macrocycleId, absoluteDay])
   );
-
-  // ============================================================================
-  // FUNCIONES DE API
-  // ============================================================================
 
   const loadDayData = async () => {
     if (!token) return;
@@ -195,7 +164,6 @@ const CustomizeDayScreen = () => {
       
       if (response.ok) {
         const data = await response.json();
-        console.log('🔥 Datos crudos del backend:', JSON.stringify(data, null, 2));
         setDayData(data);
       } else {
         const errorData = await response.json();
@@ -211,126 +179,89 @@ const CustomizeDayScreen = () => {
   };
 
   const handleSaveChanges = async () => {
-  if (!dayData || !token) return;
-  
-  try {
-    setSaving(true);
-
-    const setCustomizations: SetCustomization[] = [];
+    if (!dayData || !token) return;
     
-    // Debug: Analizar cada ejercicio y serie
-    console.log('🔍 DEBUGGING - Analizando datos antes de enviar:');
-    dayData.exercises.forEach((exercise, exerciseIndex) => {
-      console.log(`\n📝 Ejercicio ${exerciseIndex + 1}: ${exercise.exerciseName}`);
-      exercise.sets.forEach((setInfo, setIndex) => {
-        console.log(`  📊 Serie ${setIndex + 1}:`, {
-          setId: setInfo.setId,
-          isCustomized: setInfo.isCustomized,
-          customRepsMin: setInfo.customRepsMin,
-          customRepsMax: setInfo.customRepsMax,
-          customWeight: setInfo.customWeight,
-          customRir: setInfo.customRir,
-          customRpe: setInfo.customRpe,
-          customNotes: setInfo.customNotes,
+    try {
+      setSaving(true);
+
+      const setCustomizations: SetCustomization[] = [];
+      
+      dayData.exercises.forEach((exercise, exerciseIndex) => {
+        exercise.sets.forEach((setInfo, setIndex) => {
+          const customization: SetCustomization = {
+            exerciseSetId: setInfo.setId,
+            customRepsMin: setInfo.customRepsMin,
+            customRepsMax: setInfo.customRepsMax,
+            customWeight: setInfo.customWeight,
+            customRir: setInfo.customRir,
+            customRpe: setInfo.customRpe,
+            customNotes: setInfo.customNotes,
+          };
+          
+          if (!setInfo.setId) {
+            console.error('❌ ERROR: setId es undefined para serie');
+            return;
+          }
+          
+          setCustomizations.push(customization);
         });
-        
-        // 🔥 INCLUIR TODAS las series para que el backend pueda decidir
-        const customization: SetCustomization = {
-          exerciseSetId: setInfo.setId,
-          customRepsMin: setInfo.customRepsMin,
-          customRepsMax: setInfo.customRepsMax,
-          customWeight: setInfo.customWeight,
-          customRir: setInfo.customRir,
-          customRpe: setInfo.customRpe,
-          customNotes: setInfo.customNotes,
-        };
-        
-        // Validar que los datos obligatorios estén presentes
-        if (!setInfo.setId) {
-          console.error('❌ ERROR: setId es undefined para serie');
-          return;
-        }
-        
-        console.log(`  ✅ Agregando serie (${setInfo.isCustomized ? 'customizada' : 'original'}):`, customization);
-        setCustomizations.push(customization);
       });
-    });
 
-    const requestData = {
-      absoluteDay: dayData.absoluteDay,
-      setCustomizations: setCustomizations
-    };
+      const requestData = {
+        absoluteDay: dayData.absoluteDay,
+        setCustomizations: setCustomizations
+      };
 
-    console.log('\n🚀 DATOS FINALES A ENVIAR:');
-    console.log('Absolute Day:', requestData.absoluteDay);
-    console.log('Número total de series:', setCustomizations.length);
-    console.log('Customizaciones completas:', JSON.stringify(setCustomizations, null, 2));
-
-    const response = await fetch(
-      `${API_URL}/macrocycles/${macrocycleId}/days/${absoluteDay}/customize`,
-      {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestData)
-      }
-    );
-
-    if (response.status === 401) {
-      await AsyncStorage.removeItem("token");
-      await AsyncStorage.removeItem("onboardingComplete");
-      Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
-        { text: "OK", onPress: () => router.replace("/") }
-      ]);
-      return;
-    }
-
-    if (response.ok) {
-      // 🔥 CAMBIO PRINCIPAL: No recargar inmediatamente, mantener estado local
-      setHasUnsavedChanges(false);
-      
-      // Contar las customizaciones actuales en el estado local
-      const currentCustomizations = dayData.exercises.reduce((total, ex) =>
-        total + ex.sets.filter(s => s.isCustomized).length, 0);
-        
-      console.log('✅ Guardado exitoso. Customizaciones actuales:', currentCustomizations);
-      
-      Alert.alert(
-        'Cambios Guardados',
-        currentCustomizations > 0 
-          ? `Se han guardado los cambios correctamente para ese dia.`
-          : 'Se ha reseteado correctamente.',
-        [{ text: 'Vale' }]
+      const response = await fetch(
+        `${API_URL}/macrocycles/${macrocycleId}/days/${absoluteDay}/customize`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestData)
+        }
       );
-      
-      // 🔥 ALTERNATIVA: Recargar con delay para que el usuario vea el resultado
-      setTimeout(() => {
-        console.log('🔄 Recargando datos del servidor para sincronizar...');
-        loadDayData();
-      }, 1500); // 1.5 segundos después de guardar
-    } else {
-      const errorData = await response.json();
-      console.error('❌ ERROR DEL BACKEND:', errorData);
-      console.error('❌ STATUS CODE:', response.status);
-      
-      Alert.alert('Error', errorData.error || 'No se pudieron guardar los cambios');
+
+      if (response.status === 401) {
+        await AsyncStorage.removeItem("token");
+        await AsyncStorage.removeItem("onboardingComplete");
+        Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
+          { text: "OK", onPress: () => router.replace("/") }
+        ]);
+        return;
+      }
+
+      if (response.ok) {
+        setHasUnsavedChanges(false);
+        
+        const currentCustomizations = dayData.exercises.reduce((total, ex) =>
+          total + ex.sets.filter(s => s.isCustomized).length, 0);
+        
+        Alert.alert(
+          'Cambios Guardados',
+          currentCustomizations > 0 
+            ? `Se han guardado los cambios correctamente para ese dia.`
+            : 'Se ha reseteado correctamente.',
+          [{ text: 'Vale' }]
+        );
+        
+        setTimeout(() => {
+          loadDayData();
+        }, 1500);
+      } else {
+        const errorData = await response.json();
+        Alert.alert('Error', errorData.error || 'No se pudieron guardar los cambios');
+      }
+    } catch (error) {
+      Alert.alert('Error de Conexión', 'No se pudo conectar con el servidor');
+    } finally {
+      setSaving(false);
     }
-  } catch (error) {
-    console.error('❌ ERROR DE CONEXIÓN:', error);
-    Alert.alert('Error de Conexión', 'No se pudo conectar con el servidor');
-  } finally {
-    setSaving(false);
-  }
-};
-  // ============================================================================
-  // FUNCIONES DE EDICIÓN
-  // ============================================================================
+  };
 
   const handleEditSet = (setInfo: SetInfo, exerciseIndex: number, setIndex: number, exerciseName: string) => {
-    console.log("🧩 setInfo recibido en handleEditSet:", setInfo);
-
     setEditingSet({ setInfo, exerciseIndex, setIndex, exerciseName });
 
     setTempRepsMin(setInfo.effectiveRepsMin?.toString() || '');
@@ -361,7 +292,6 @@ const CustomizeDayScreen = () => {
     const weight = parseFloat(tempWeight);
     const intensity = parseInt(tempIntensity);
 
-    // Validaciones
     if (isNaN(repsMin) || repsMin <= 0) {
       Alert.alert('Error', 'Las repeticiones mínimas deben ser un número mayor a 0');
       return;
@@ -391,7 +321,6 @@ const CustomizeDayScreen = () => {
       return;
     }
 
-    // Actualizar datos
     const newDayData = JSON.parse(JSON.stringify(dayData));
     const exercise = newDayData.exercises[exerciseIndex];
     const setInfo = exercise.sets[setIndex];
@@ -439,12 +368,6 @@ const CustomizeDayScreen = () => {
     setEditingSet(null);
   };
 
-  // ============================================================================
-  // FUNCIONES DE RESET
-  // ============================================================================
-
-  
-
   const handleResetAllCustomizations = () => {
     if (!dayData || !dayData.hasCustomizations) return;
     
@@ -489,10 +412,6 @@ const CustomizeDayScreen = () => {
     );
   };
 
-  // ============================================================================
-  // FUNCIONES DE NAVEGACIÓN Y UTILIDADES
-  // ============================================================================
-
   const handleBackPress = () => {
     if (hasUnsavedChanges) {
       Alert.alert(
@@ -514,7 +433,7 @@ const CustomizeDayScreen = () => {
       setShowInfoCard(false);
     } catch (error) {
       console.log('Error saving info card preference:', error);
-      setShowInfoCard(false); // Cerrar de todas formas
+      setShowInfoCard(false);
     }
   };
 
@@ -550,14 +469,9 @@ const CustomizeDayScreen = () => {
     return null;
   };
 
-  // ============================================================================
-  // COMPONENTES DE RENDERIZADO
-  // ============================================================================
-
   const renderSetCard = (setInfo: SetInfo, exerciseIndex: number, setIndex: number, exerciseName: string) => {
     const intensityLabel = getIntensityLabel(setInfo);
     
-    // Calcular isCustomized localmente si viene undefined
     const isActuallyCustomized = setInfo.isCustomized !== undefined 
       ? setInfo.isCustomized 
       : !!(setInfo.customRepsMin || setInfo.customRepsMax || setInfo.customWeight || setInfo.customRir || setInfo.customRpe || setInfo.customNotes);
@@ -666,7 +580,6 @@ const CustomizeDayScreen = () => {
         >
           <SafeAreaView style={styles.modalContainer}>
             <View style={styles.modalContent}>
-              {/* Header del modal */}
               <View style={styles.modalHeader}>
                 <View style={styles.modalTitleContainer}>
                   <Text style={styles.modalTitle}>Editar Serie {setInfo.setNumber}</Text>
@@ -681,9 +594,7 @@ const CustomizeDayScreen = () => {
                 </TouchableOpacity>
               </View>
               
-              {/* Cuerpo del modal */}
               <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                {/* Valores originales */}
                 <View style={styles.originalComparisonCard}>
                   <Text style={styles.originalComparisonTitle}>Valores originales:</Text>
                   <Text style={styles.originalComparisonText}>
@@ -696,7 +607,6 @@ const CustomizeDayScreen = () => {
                   </Text>
                 </View>
                 
-                {/* Repeticiones */}
                 <View style={styles.inputSection}>
                   <Text style={styles.sectionTitle}>Repeticiones</Text>
                   <View style={styles.inputRow}>
@@ -727,7 +637,6 @@ const CustomizeDayScreen = () => {
                   </View>
                 </View>
                 
-                {/* Peso */}
                 <View style={styles.inputSection}>
                   <Text style={styles.sectionTitle}>Peso</Text>
                   <View style={styles.inputGroup}>
@@ -744,7 +653,6 @@ const CustomizeDayScreen = () => {
                   </View>
                 </View>
                 
-                {/* Intensidad */}
                 {(setInfo.originalRir !== undefined || setInfo.originalRpe !== undefined) && (
                   <View style={styles.inputSection}>
                     <Text style={styles.sectionTitle}>Intensidad</Text>
@@ -815,7 +723,6 @@ const CustomizeDayScreen = () => {
                   </View>
                 )}
                 
-                {/* Notas */}
                 <View style={styles.inputSection}>
                   <Text style={styles.sectionTitle}>Notas (opcional)</Text>
                   <View style={styles.inputGroup}>
@@ -833,7 +740,6 @@ const CustomizeDayScreen = () => {
                   </View>
                 </View>
                 
-                {/* Vista previa */}
                 <View style={styles.previewCard}>
                   <Text style={styles.previewTitle}>Vista previa:</Text>
                   <Text style={styles.previewText}>
@@ -851,7 +757,6 @@ const CustomizeDayScreen = () => {
                 </View>
               </ScrollView>
               
-              {/* Acciones del modal */}
               <View style={styles.modalActions}>
                 <TouchableOpacity
                   style={styles.cancelButton}
@@ -876,11 +781,6 @@ const CustomizeDayScreen = () => {
     );
   };
 
-  // ============================================================================
-  // RENDERIZADO PRINCIPAL
-  // ============================================================================
-
-  // Estados de carga y error
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -907,10 +807,8 @@ const CustomizeDayScreen = () => {
     );
   }
 
-  // Renderizado principal
   return (
     <SafeAreaView style={styles.container}>
-      {/* ===== HEADER ===== */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity
@@ -938,7 +836,6 @@ const CustomizeDayScreen = () => {
         </View>
       </View>
 
-      {/* ===== TARJETA DE ESTADÍSTICAS ===== */}
       <View style={styles.statsCard}>
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
@@ -969,18 +866,15 @@ const CustomizeDayScreen = () => {
         </View>
       </View>
 
-      {/* ===== CONTENIDO PRINCIPAL ===== */}
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Lista de ejercicios */}
         {dayData.exercises.map((exercise, exerciseIndex) =>
           renderExerciseCard(exercise, exerciseIndex)
         )}
 
-        {/* Tarjeta de información dismissible */}
         {showInfoCard && (
           <View style={styles.infoCard}>
             <View style={styles.infoHeader}>
@@ -1005,7 +899,6 @@ const CustomizeDayScreen = () => {
           </View>
         )}
 
-        {/* Botones de acción */}
         <View style={styles.actionButtonsInline}>
           {dayData.hasCustomizations && (
             <TouchableOpacity
@@ -1037,24 +930,16 @@ const CustomizeDayScreen = () => {
         </View>
       </ScrollView>
 
-      {/* ===== MODAL DE EDICIÓN ===== */}
       {renderEditModal()}
     </SafeAreaView>
   );
 };
 
-// ============================================================================
-// ESTILOS
-// ============================================================================
-
 const styles = StyleSheet.create({
-  // ===== CONTENEDOR PRINCIPAL =====
   container: {
     flex: 1,
     backgroundColor: '#FAFAFA',
   },
-
-  // ===== ESTADOS DE CARGA Y ERROR =====
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -1096,8 +981,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-
-  // ===== HEADER =====
   header: {
     backgroundColor: 'white',
     paddingTop: 20,
@@ -1143,8 +1026,6 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: '#5E4B8B',
   },
-
-  // ===== TARJETA DE ESTADÍSTICAS =====
   statsCard: {
     backgroundColor: 'white',
     marginHorizontal: 20,
@@ -1187,8 +1068,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1F2937',
   },
-
-  // ===== CONTENIDO Y SCROLL =====
   content: {
     flex: 1,
   },
@@ -1196,8 +1075,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
   },
-
-  // ===== TARJETAS DE EJERCICIOS =====
   exerciseCard: {
     backgroundColor: 'white',
     borderRadius: 16,
@@ -1288,8 +1165,6 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     lineHeight: 20,
   },
-
-  // ===== SERIES =====
   setsContainer: {
     gap: 12,
   },
@@ -1363,8 +1238,6 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontStyle: 'italic',
   },
-
-  // ===== TARJETA DE INFORMACIÓN =====
   infoCard: {
     backgroundColor: 'white',
     borderRadius: 16,
@@ -1409,8 +1282,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#6B7280',
   },
-
-  // ===== BOTONES DE ACCIÓN =====
   actionButtonsInline: {
     flexDirection: 'row',
     gap: 12,
@@ -1466,8 +1337,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'white',
   },
-
-  // ===== MODAL =====
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -1520,8 +1389,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 16,
   },
-
-  // ===== FORMULARIO DEL MODAL =====
   originalComparisonCard: {
     backgroundColor: '#F8FAFC',
     padding: 16,
@@ -1586,8 +1453,6 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     minHeight: 80,
   },
-
-  // ===== TOGGLE DE INTENSIDAD =====
   intensityToggle: {
     flexDirection: 'row',
     backgroundColor: '#F3F4F6',
@@ -1612,8 +1477,6 @@ const styles = StyleSheet.create({
   intensityButtonTextActive: {
     color: 'white',
   },
-
-  // ===== VISTA PREVIA =====
   previewCard: {
     backgroundColor: '#EDE9FE',
     padding: 16,
@@ -1639,8 +1502,6 @@ const styles = StyleSheet.create({
     color: '#7C3AED',
     fontStyle: 'italic',
   },
-
-  // ===== ACCIONES DEL MODAL =====
   modalActions: {
     flexDirection: 'row',
     padding: 20,

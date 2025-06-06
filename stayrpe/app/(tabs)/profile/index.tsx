@@ -168,7 +168,6 @@ const ProfileScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.headerTextContainer}>
@@ -183,7 +182,6 @@ const ProfileScreen = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Información Personal */}
         <View style={styles.profileCard}>
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
@@ -224,7 +222,6 @@ const ProfileScreen = () => {
           </View>
         </View>
 
-        {/* Información de Fitness */}
         <View style={styles.fitnessCard}>
           <View style={styles.cardHeader}>
             <View style={styles.headerLeft}>
@@ -256,7 +253,6 @@ const ProfileScreen = () => {
           </View>
         </View>
 
-        {/* Opciones */}
         <View style={styles.optionsCard}>
           <View style={styles.cardHeader}>
             <View style={styles.headerLeft}>
@@ -324,7 +320,6 @@ const ProfileScreen = () => {
           </View>
         </View>
 
-        {/* Botón de cerrar sesión */}
         <TouchableOpacity 
           style={styles.logoutButton}
           onPress={handleLogout}
@@ -410,7 +405,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 15,
-    color: '#6B7280',
+    color: '#6B5B95',
     fontWeight: '400',
   },
   content: {
@@ -624,7 +619,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-  
 });
 
 export default ProfileScreen;

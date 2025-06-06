@@ -75,7 +75,6 @@ const CreateExerciseScreen = () => {
         })
       });
 
-      // VERIFICACIÓN TOKEN EXPIRADO
       if (response.status === 401) {
         await AsyncStorage.removeItem("token");
         await AsyncStorage.removeItem("onboardingComplete");
@@ -131,7 +130,6 @@ const CreateExerciseScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header moderno */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity
@@ -153,7 +151,6 @@ const CreateExerciseScreen = () => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Formulario principal */}
         <View style={styles.formCard}>
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Nombre del Ejercicio</Text>
@@ -207,7 +204,6 @@ const CreateExerciseScreen = () => {
             </View>
           </View>
 
-          {/* Botón de crear */}
           <TouchableOpacity 
             style={[styles.createButton, loading && styles.createButtonDisabled]}
             onPress={createExercise}
@@ -227,7 +223,6 @@ const CreateExerciseScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Card de consejos */}
         <View style={styles.tipsCard}>
           <View style={styles.tipsHeader}>
             <View style={styles.tipsIconContainer}>
@@ -272,7 +267,7 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: 'white',
-    paddingTop: 60,
+    paddingTop: 20,
     paddingBottom: 20,
     paddingHorizontal: 20,
     borderBottomWidth: 0.5,

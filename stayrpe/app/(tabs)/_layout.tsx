@@ -25,14 +25,12 @@ export default function TabLayout() {
           style: "destructive",
           onPress: async () => {
             try {
-              // Limpiar AsyncStorage
               await AsyncStorage.removeItem("token");
               await AsyncStorage.removeItem("onboardingComplete");
               await AsyncStorage.removeItem("userProfile");
               
               console.log('✅ Sesión cerrada correctamente');
               
-              // Navegar a la pantalla de registro/login
               router.push("/")
             } catch (error) {
               console.error('❌ Error al cerrar sesión:', error);
@@ -44,7 +42,6 @@ export default function TabLayout() {
     );
   };
 
-  // Componente reutilizable para el botón de logout
   const LogoutButton = () => (
     <Pressable
       onPress={confirmarLogout}
@@ -65,17 +62,15 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: true, // Cambiar a true para mostrar headers
+        headerShown: true,
         tabBarButton: HapticTab,
         tabBarBackground: TabBarBackground,
         tabBarStyle: Platform.select({
           ios: {
-            // Use a transparent background on iOS to show the blur effect
             position: 'absolute',
           },
           default: {},
         }),
-        // Estilo común para todos los headers
         headerStyle: {
           backgroundColor: '#fff',
         },
@@ -92,23 +87,23 @@ export default function TabLayout() {
           title: 'Calendario',
           headerRight: () => <LogoutButton />,
           headerTitleStyle: {
-            color: '#5E4B8B',     // <--- COLOR DEL TÍTULO
+            color: '#5E4B8B',
             fontWeight: 'bold',
             fontSize: 20,
           },
           headerStyle: {
-            backgroundColor: '#fff', // Color diferente para rutinas
-          }, // <-- AQUÍ alineas el logo a la izquierda
+            backgroundColor: '#fff',
+          },
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="calendar" color={"#5E4B8B"} />,
         }}
       />
       
       <Tabs.Screen
-        name="macrociclo"
+        name="macrocycle"
         options={{
           title: 'Macrociclo',
           headerTitleStyle: {
-            color: '#5E4B8B',     // <--- COLOR DEL TÍTULO
+            color: '#5E4B8B',
             fontWeight: 'bold',
             fontSize: 20,
           },
@@ -122,13 +117,13 @@ export default function TabLayout() {
           title: 'Rutinas',
           headerRight: () => <LogoutButton />,
           headerTitleStyle: {
-            color: '#5E4B8B',     // <--- COLOR DEL TÍTULO
+            color: '#5E4B8B',
             fontWeight: 'bold',
             fontSize: 20,
           },
           headerStyle: {
-            backgroundColor: '#fff', // Color diferente para rutinas
-          }, // <-- AQUÍ alineas el logo a la izquierda
+            backgroundColor: '#fff',
+          },
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={"#5E4B8B"} />,
         }}
       />
@@ -138,20 +133,16 @@ export default function TabLayout() {
           title: 'Perfil',
           headerRight: () => <LogoutButton />,
           headerTitleStyle: {
-            color: '#5E4B8B',     // <--- COLOR DEL TÍTULO
+            color: '#5E4B8B',
             fontWeight: 'bold',
             fontSize: 20,
           },
           headerStyle: {
-            backgroundColor: '#fff', // Color diferente para rutinas
-          }, // <-- AQUÍ alineas el logo a la izquierda
+            backgroundColor: '#fff',
+          },
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="person" color={"#5E4B8B"} />,
         }}
       />
-      
-
     </Tabs>
   );
 }
-
-

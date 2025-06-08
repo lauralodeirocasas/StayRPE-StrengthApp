@@ -1,57 +1,61 @@
-import { StyleSheet, Text, View, SafeAreaView, Image, TouchableOpacity } from "react-native";
+import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { Ionicons } from '@expo/vector-icons';
 
 export default function WelcomeScreen() {
   const router = useRouter();
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [imageError, setImageError] = useState(false);
 
   const handleContinue = () => {
     router.push("/onboarding/personal-data");
   };
 
-  // Logo SVG como componente (más rápido que imagen)
   const LogoComponent = () => (
     <View style={styles.logoContainer}>
       <View style={styles.logoCircle}>
-        <Text style={styles.logoText}>StayRPE</Text>
+        <Ionicons name="fitness" size={48} color="#FFFFFF" />
       </View>
+      <Text style={styles.logoText}>StayRPE</Text>
     </View>
   );
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>¡Bienvenido a StayRPE!</Text>
+        <View style={styles.headerSection}>
+          <Text style={styles.title}>¡Bienvenido a StayRPE!</Text>
+          <Text style={styles.subtitle}>Organiza y planifica tu entrenamiento</Text>
+        </View>
         
-        {/* Opción 1: Logo como componente (más rápido) */}
         <LogoComponent />
         
-        {/* Opción 2: Imagen con fallback y optimización 
-        {!imageError ? (
-          <Image 
-            source={require('../../assets/images/stayrpe_logo.png')}
-            style={[styles.image, { opacity: imageLoaded ? 1 : 0.3 }]}
-            resizeMode="contain"
-            onLoad={() => setImageLoaded(true)}
-            onError={() => setImageError(true)}
-          />
-        ) : (
-          <LogoComponent />
-        )}
-        */}
-        
-        <Text style={styles.description}>
-          Antes de comenzar, necesitamos algunos datos para personalizar tu experiencia.
-        </Text>
+        <View style={styles.descriptionSection}>
+          <Text style={styles.description}>
+            Antes de comenzar, necesitamos algunos datos básicos para configurar tu perfil de atleta.
+          </Text>
+          
+          <View style={styles.featuresList}>
+            <View style={styles.featureItem}>
+              <Ionicons name="checkmark-circle" size={20} color="#5E4B8B" />
+              <Text style={styles.featureText}>Tracking de entrenamientos</Text>
+            </View>
+            <View style={styles.featureItem}>
+              <Ionicons name="checkmark-circle" size={20} color="#5E4B8B" />
+              <Text style={styles.featureText}>Organización de rutinas</Text>
+            </View>
+            <View style={styles.featureItem}>
+              <Ionicons name="checkmark-circle" size={20} color="#5E4B8B" />
+              <Text style={styles.featureText}>Planificación de macrociclos</Text>
+            </View>
+          </View>
+        </View>
         
         <TouchableOpacity 
           style={styles.button} 
           onPress={handleContinue} 
           activeOpacity={0.8}
         >
-          <Text style={styles.buttonText}>Continuar</Text>
+          <Text style={styles.buttonText}>Comenzar</Text>
+          <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -61,76 +65,101 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f7f5fc",
+    backgroundColor: "#FAFAFA",
   },
   content: {
     flex: 1,
-    justifyContent: "center",
+    justifyContent: "space-between",
     alignItems: "center",
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 40,
+  },
+  headerSection: {
+    alignItems: "center",
+    marginBottom: 20,
   },
   title: {
     fontSize: 32,
     fontWeight: "700",
-    color: "#5E4B8B",
-    marginBottom: 30,
+    color: "#2D1B4E",
+    marginBottom: 8,
     textAlign: "center",
   },
-  // Logo como componente (opción más rápida)
+  subtitle: {
+    fontSize: 16,
+    color: "#6B7280",
+    textAlign: "center",
+    fontWeight: "400",
+  },
   logoContainer: {
-    marginBottom: 30,
     alignItems: "center",
     justifyContent: "center",
+    marginVertical: 40,
   },
   logoCircle: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: "#5E4B8B",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#8B63D7",
+    marginBottom: 16,
+    shadowColor: "#5E4B8B",
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 15,
-    elevation: 10,
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 8,
   },
   logoText: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "800",
-    color: "#fff9db",
+    color: "#5E4B8B",
     letterSpacing: 2,
   },
-  // Estilos para imagen (si decides usarla)
-  image: {
-    width: 200, // Tamaño fijo más pequeño
-    height: 150, // Tamaño fijo más pequeño
-    marginBottom: 30,
+  descriptionSection: {
+    alignItems: "center",
+    paddingHorizontal: 10,
   },
   description: {
     fontSize: 16,
-    color: "#7D7A8C",
+    color: "#6B7280",
     textAlign: "center",
-    marginBottom: 40,
     lineHeight: 24,
-    paddingHorizontal: 10,
+    marginBottom: 32,
+  },
+  featuresList: {
+    gap: 12,
+    alignItems: "flex-start",
+  },
+  featureItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  featureText: {
+    fontSize: 16,
+    color: "#1F2937",
+    fontWeight: "500",
   },
   button: {
-    width: 250,
-    backgroundColor: "#5E4B8B",
-    paddingVertical: 16,
-    borderRadius: 30,
+    flexDirection: "row",
     alignItems: "center",
-    shadowColor: "#8B63D7",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 8,
+    justifyContent: "center",
+    backgroundColor: "#5E4B8B",
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 16,
+    gap: 8,
+    minWidth: 200,
+    shadowColor: "#5E4B8B",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
   },
   buttonText: {
-    color: "#fff9db",
+    color: "#FFFFFF",
     fontWeight: "700",
     fontSize: 18,
-    letterSpacing: 1,
   },
 });

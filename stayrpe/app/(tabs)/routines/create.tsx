@@ -27,7 +27,7 @@ interface SelectedExercise {
   intensityType: 'RIR' | 'RPE';
   sets: SetData[];
   tempId?: string;
-  id?: number; // Para rutinas existentes
+  id?: number;
 }
 
 interface SetData {
@@ -37,7 +37,7 @@ interface SetData {
   targetWeight: number;
   intensity: number;
   notes: string;
-  id?: number; // Para sets existentes
+  id?: number;
 }
 
 interface RoutineData {
@@ -70,20 +70,17 @@ const CreateRoutineScreen = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
   
-  // Estados básicos
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [selectedExercises, setSelectedExercises] = useState<SelectedExercise[]>([]);
   
-  // Estados para modales
   const [showExerciseModal, setShowExerciseModal] = useState(false);
   const [editingExercise, setEditingExercise] = useState<SelectedExercise | null>(null);
   const [showSetEditor, setShowSetEditor] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   
-  // Estados para edición
   const [isEditing, setIsEditing] = useState(false);
   const [routineId, setRoutineId] = useState<number | null>(null);
 
@@ -95,7 +92,6 @@ const CreateRoutineScreen = () => {
         const storedToken = await AsyncStorage.getItem("token");
         setToken(storedToken);
         
-        // Verificar si es modo edición
         if (params.isEditing === 'true' && params.routineData && params.routineId) {
           setIsEditing(true);
           setRoutineId(parseInt(params.routineId as string));
@@ -110,8 +106,6 @@ const CreateRoutineScreen = () => {
   }, []);
 
   const loadRoutineDataForEdit = (routineData: RoutineData) => {
-    console.log('📋 Cargando datos de rutina para edición en create:', routineData);
-    
     setName(routineData.name);
     setDescription(routineData.description || '');
     
@@ -142,12 +136,7 @@ const CreateRoutineScreen = () => {
     });
     
     setSelectedExercises(convertedExercises);
-    console.log('✅ Ejercicios convertidos para edición:', convertedExercises.length);
   };
-
-  // =========================================================================
-  // FUNCIONES DE MANEJO DE EJERCICIOS - SIMPLIFICADAS
-  // =========================================================================
 
   const handleExerciseSelected = (exercise: Exercise) => {
     const tempId = `temp_${Date.now()}_${exercise.id}`;
@@ -172,7 +161,6 @@ const CreateRoutineScreen = () => {
     setSelectedExercises(newSelectedExercises);
     setShowExerciseModal(false);
     
-    // Abrir editor de series automáticamente
     setEditingExercise(newExercise);
     setEditingIndex(newSelectedExercises.length - 1);
     setShowSetEditor(true);
@@ -201,10 +189,6 @@ const CreateRoutineScreen = () => {
     setEditingExercise(null);
     setEditingIndex(null);
   };
-
-  // =========================================================================
-  // FUNCIONES DE SERIES - MANTENIDAS COMO ESTÁN
-  // =========================================================================
 
   const addSetToExercise = () => {
     if (!editingExercise) return;
@@ -256,13 +240,135 @@ const CreateRoutineScreen = () => {
     });
   };
 
-  // =========================================================================
-  // FUNCIÓN DE SUBMIT - SIN CAMBIOS
-  // =========================================================================
+  const handleRestChange = (text: string) => {
+    if (!editingExercise) return;
+    
+    if (text === '') {
+      setEditingExercise({
+        ...editingExercise,
+        restBetweenSets: 0
+      });
+      return;
+    }
+    
+    const numValue = parseInt(text);
+    if (!isNaN(numValue) && numValue >= 0) {
+      setEditingExercise({
+        ...editingExercise,
+        restBetweenSets: numValue
+      });
+    }
+  };
 
+  // 🔥 NUEVA FUNCIÓN: Manejar error de rutina en uso
+  const handleRoutineInUseError = (errorData: any) => {
+    const macrocycleNames = errorData.macrocycleDetails
+      ?.map((m: any) => m.name)
+      ?.join(', ') || 'macrociclos activos';
+    
+    const macrocycleCount = errorData.activeMacrocycles || 0;
+    
+    let alertTitle = 'No se puede editar';
+    let alertMessage = '';
+
+    alertMessage = `La rutina "${errorData.routineName}" está siendo utilizada en el macrociclo activo.\n\nSolo podras editar aquellas rutinas que no esté en un macrociclo activo.`;
+    
+    
+    Alert.alert(
+      alertTitle,
+      alertMessage,
+      [
+        {
+          text: 'Duplicar rutina',
+          onPress: () => handleDuplicateRoutine(),
+          style: 'default'
+        },
+        {
+          text: 'Desactivar macrociclo',
+          onPress: () => router.push("/(tabs)/macrocycle"),
+          style: 'default'
+        },
+        {
+          text: 'Cancelar',
+          style: 'cancel'
+        }
+      ],
+      { cancelable: true }
+    );
+  };
+
+  // 🔥 NUEVA FUNCIÓN: Duplicar rutina
+  const handleDuplicateRoutine = async () => {
+    if (!token || !routineId) return;
+    
+    try {
+      setLoading(true);
+      
+      const response = await fetch(`${API_URL}/routines/${routineId}/duplicate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: `${name} (Copia)`
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        Alert.alert(
+          '¡Rutina duplicada!',
+          `Se creó una copia: "${data.duplicatedRoutineName}". Ahora puedes editarla libremente.`,
+          [
+            {
+              text: 'Editar copia',
+              onPress: () => {
+                router.replace({
+                  pathname: '/routines/create',
+                  params: {
+                    isEditing: 'true',
+                    routineId: data.routine.id.toString(),
+                    routineData: JSON.stringify(data.routine)
+                  }
+                });
+              }
+            },
+            {
+              text: 'Volver',
+              onPress: () => router.back(),
+              style: 'cancel'
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Error', data.error || 'No se pudo duplicar la rutina');
+      }
+    } catch (error) {
+      console.error('Error duplicando rutina:', error);
+      Alert.alert('Error', 'Error de conexión al duplicar la rutina');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  
+
+  // 🔥 ACTUALIZADA: Función de envío con manejo de rutina en uso
   const handleSubmit = async () => {
-    if (!token || !name.trim() || selectedExercises.length === 0) {
-      Alert.alert('Error', 'Completa todos los campos obligatorios');
+    if (!token) {
+      Alert.alert('Error', 'No se encontró token de autenticación');
+      return;
+    }
+
+    if (!name.trim()) {
+      Alert.alert('Error', 'El nombre de la rutina es obligatorio');
+      return;
+    }
+
+    if (selectedExercises.length === 0) {
+      Alert.alert('Error', 'Debes agregar al menos un ejercicio');
       return;
     }
     
@@ -300,7 +406,7 @@ const CreateRoutineScreen = () => {
           },
           body: JSON.stringify(routineData)
         });
-        successMessage = 'Rutina actualizada';
+        successMessage = 'Rutina actualizada exitosamente';
       } else {
         response = await fetch(`${API_URL}/routines`, {
           method: 'POST',
@@ -310,36 +416,81 @@ const CreateRoutineScreen = () => {
           },
           body: JSON.stringify(routineData)
         });
-        successMessage = 'Rutina creada';
+        successMessage = 'Rutina creada exitosamente';
       }
 
       if (response.status === 401) {
         await AsyncStorage.removeItem("token");
         await AsyncStorage.removeItem("onboardingComplete");
-        Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
-          { text: "OK", onPress: () => router.replace("/") }
-        ]);
+        Alert.alert(
+          "Sesión Expirada", 
+          "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", 
+          [{ text: "OK", onPress: () => router.replace("/") }]
+        );
         return;
       }
 
       const data = await response.json();
+      
       if (response.ok) {
-        Alert.alert(successMessage, `"${data.name}" se ha ${isEditing ? 'actualizado' : 'creado'} correctamente`, [
-          { text: 'OK', onPress: () => router.back() }
-        ]);
+        // Manejar respuesta exitosa
+        let message = successMessage;
+        if (data.routine) {
+          message = `${successMessage}: "${data.routine.name}"`;
+        } else if (data.name) {
+          message = `${successMessage}: "${data.name}"`;
+        }
+        
+        Alert.alert(
+          "¡Éxito!", 
+          message, 
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      } else if (response.status === 409 && data.errorCode === 'ROUTINE_IN_USE') {
+        // 🔥 NUEVO: Manejar rutina en uso
+        handleRoutineInUseError(data);
       } else {
-        Alert.alert('Error', data.error || `Error al ${isEditing ? 'actualizar' : 'crear'} rutina`);
+        // Otros errores
+        if (data.error && data.error.includes('Ya tienes una rutina con el nombre')) {
+          Alert.alert(
+            'Nombre duplicado', 
+            data.error,
+            [{ text: 'OK', onPress: () => {} }]
+          );
+        } else {
+          Alert.alert(
+            'Error', 
+            data.error || `Error al ${isEditing ? 'actualizar' : 'crear'} la rutina`
+          );
+        }
       }
     } catch (error) {
-      Alert.alert('Error', 'No se pudo conectar con el servidor');
+      console.error('Error de red:', error);
+      Alert.alert(
+        'Error de conexión', 
+        'No se pudo conectar con el servidor. Verifica tu conexión a internet.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  // =========================================================================
-  // RENDERIZADO - SIMPLIFICADO
-  // =========================================================================
+  // 🔥 NUEVA FUNCIÓN: Renderizar botón de duplicar
+  const renderDuplicateButton = () => {
+    if (!isEditing) return null;
+    
+    return (
+      <TouchableOpacity
+        style={styles.duplicateButton}
+        onPress={handleDuplicateRoutine}
+        disabled={loading}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="copy-outline" size={18} color="#5E4B8B" />
+        <Text style={styles.duplicateButtonText}>Duplicar</Text>
+      </TouchableOpacity>
+    );
+  };
 
   if (!token) {
     return (
@@ -351,12 +502,10 @@ const CreateRoutineScreen = () => {
     );
   }
 
-  // Obtener IDs de ejercicios ya seleccionados para excluirlos del modal
   const excludedExerciseIds = selectedExercises.map(ex => ex.exerciseId);
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity
@@ -374,6 +523,8 @@ const CreateRoutineScreen = () => {
               {isEditing ? 'Modifica tu entrenamiento' : 'Crea tu entrenamiento personalizado'}
             </Text>
           </View>
+          {/* 🔥 NUEVO: Botón de duplicar en el header */}
+          {renderDuplicateButton()}
         </View>
       </View>
 
@@ -382,7 +533,6 @@ const CreateRoutineScreen = () => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Formulario básico */}
         <View style={styles.formCard}>
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Nombre de la rutina</Text>
@@ -393,6 +543,7 @@ const CreateRoutineScreen = () => {
                 onChangeText={setName}
                 placeholder="Ej. Push Pull Legs"
                 placeholderTextColor="#9CA3AF"
+                editable={!loading}
               />
             </View>
           </View>
@@ -408,12 +559,12 @@ const CreateRoutineScreen = () => {
                 placeholderTextColor="#9CA3AF"
                 multiline
                 numberOfLines={3}
+                editable={!loading}
               />
             </View>
           </View>
         </View>
 
-        {/* Sección de ejercicios */}
         <View style={styles.exercisesCard}>
           <View style={styles.cardHeader}>
             <View style={styles.headerLeft}>
@@ -428,11 +579,12 @@ const CreateRoutineScreen = () => {
               </View>
             </View>
             <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => setShowExerciseModal(true)}
-              activeOpacity={0.8}
+              style={[styles.addButton, loading && styles.addButtonDisabled]}
+              onPress={() => !loading && setShowExerciseModal(true)}
+              activeOpacity={loading ? 1 : 0.8}
+              disabled={loading}
             >
-              <Ionicons name="add" size={18} color="white" />
+              <Ionicons name="add" size={18} color={loading ? "#9CA3AF" : "white"} />
             </TouchableOpacity>
           </View>
 
@@ -465,18 +617,20 @@ const CreateRoutineScreen = () => {
                     </View>
                     <View style={styles.exerciseActions}>
                       <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => editExercise(index)}
-                        activeOpacity={0.7}
+                        style={[styles.actionButton, loading && styles.actionButtonDisabled]}
+                        onPress={() => !loading && editExercise(index)}
+                        activeOpacity={loading ? 1 : 0.7}
+                        disabled={loading}
                       >
-                        <Ionicons name="pencil" size={16} color="#6B7280" />
+                        <Ionicons name="pencil" size={16} color={loading ? "#D1D5DB" : "#6B7280"} />
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.actionButton, styles.deleteButton]}
-                        onPress={() => removeExercise(index)}
-                        activeOpacity={0.7}
+                        style={[styles.actionButton, styles.deleteButton, loading && styles.actionButtonDisabled]}
+                        onPress={() => !loading && removeExercise(index)}
+                        activeOpacity={loading ? 1 : 0.7}
+                        disabled={loading}
                       >
-                        <Ionicons name="trash" size={16} color="#EF4444" />
+                        <Ionicons name="trash" size={16} color={loading ? "#D1D5DB" : "#EF4444"} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -486,7 +640,6 @@ const CreateRoutineScreen = () => {
           )}
         </View>
 
-        {/* Botón de acción */}
         <TouchableOpacity
           style={[
             styles.createButton,
@@ -498,7 +651,12 @@ const CreateRoutineScreen = () => {
         >
           <View style={styles.createButtonContent}>
             {loading ? (
-              <ActivityIndicator color="white" size="small" />
+              <>
+                <ActivityIndicator color="white" size="small" />
+                <Text style={styles.createButtonText}>
+                  {isEditing ? 'Actualizando...' : 'Creando...'}
+                </Text>
+              </>
             ) : (
               <>
                 <Ionicons name="checkmark-circle" size={20} color="white" />
@@ -511,7 +669,6 @@ const CreateRoutineScreen = () => {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* 🔥 MODAL SIMPLIFICADO - Solo para selección de ejercicios */}
       <ExercisePickerModal
         visible={showExerciseModal}
         onClose={() => setShowExerciseModal(false)}
@@ -522,7 +679,6 @@ const CreateRoutineScreen = () => {
         subtitle="Selecciona de tu biblioteca o crea uno nuevo"
       />
 
-      {/* Modal editor de series - SIN CAMBIOS */}
       <Modal visible={showSetEditor} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView style={styles.modal}>
           <View style={styles.modalHeader}>
@@ -551,7 +707,6 @@ const CreateRoutineScreen = () => {
           </View>
 
           <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-            {/* Configuración básica */}
             <View style={styles.configCard}>
               <Text style={styles.configTitle}>Configuración General</Text>
               
@@ -561,18 +716,17 @@ const CreateRoutineScreen = () => {
                   <View style={styles.inputWrapper}>
                     <TextInput
                       style={styles.configInputImproved}
-                      value={editingExercise?.restBetweenSets?.toString() || ''}
-                      onChangeText={(text) => {
-                        const numValue = parseInt(text) || 90;
-                        editingExercise && setEditingExercise({
-                          ...editingExercise,
-                          restBetweenSets: numValue
-                        });
-                      }}
+                      value={editingExercise?.restBetweenSets === 0 ? '' : editingExercise?.restBetweenSets?.toString() || ''}
+                      onChangeText={handleRestChange}
                       keyboardType="number-pad"
                       placeholder="90"
                       placeholderTextColor="#9CA3AF"
                       selectTextOnFocus={true}
+                      onBlur={() => {
+                        if (!editingExercise?.restBetweenSets || editingExercise.restBetweenSets === 0) {
+                          setEditingExercise(prev => prev ? { ...prev, restBetweenSets: 90 } : null);
+                        }
+                      }}
                     />
                     <Text style={styles.unitLabel}>seg</Text>
                   </View>
@@ -612,7 +766,6 @@ const CreateRoutineScreen = () => {
               </View>
             </View>
 
-            {/* Series */}
             <View style={styles.setsCard}>
               <View style={styles.setsHeader}>
                 <View>
@@ -747,10 +900,6 @@ const CreateRoutineScreen = () => {
   );
 };
 
-// =========================================================================
-// ESTILOS - MANTENIDOS IGUALES
-// =========================================================================
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -795,6 +944,23 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#6B7280',
     fontWeight: '400',
+  },
+  // 🔥 NUEVO: Estilo para botón de duplicar
+  duplicateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 6,
+  },
+  duplicateButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#5E4B8B',
   },
   content: {
     flex: 1,
@@ -894,6 +1060,11 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  addButtonDisabled: {
+    backgroundColor: '#D1D5DB',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
   emptyState: {
     alignItems: 'center',
     paddingVertical: 40,
@@ -986,6 +1157,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  actionButtonDisabled: {
+    backgroundColor: '#F1F5F9',
+    opacity: 0.5,
+  },
   deleteButton: {
     backgroundColor: '#FEF2F2',
   },
@@ -1017,10 +1192,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
   },
-
-  // =========================================================================
-  // ESTILOS DEL MODAL DE SERIES
-  // =========================================================================
   modal: {
     flex: 1,
     backgroundColor: 'white',
@@ -1072,8 +1243,6 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
   },
-
-  // Configuración
   configCard: {
     backgroundColor: '#FAFBFC',
     borderRadius: 16,
@@ -1156,8 +1325,6 @@ const styles = StyleSheet.create({
   intensityButtonTextActiveImproved: {
     color: 'white',
   },
-
-  // Series
   setsCard: {
     backgroundColor: '#FAFBFC',
     borderRadius: 16,

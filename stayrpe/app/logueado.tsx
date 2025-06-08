@@ -1,5 +1,3 @@
-// app/logueado.tsx
-
 import { useEffect, useState } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -24,7 +22,6 @@ export default function Logueado() {
           return;
         }
 
-        // Si no está completo local, consultamos backend
         const response = await fetch("http://192.168.0.57:8080/user/profile", {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -38,10 +35,8 @@ export default function Logueado() {
           }
         }
 
-        // Si no está completo o hubo error, vamos a onboarding
         router.replace("/onboarding/welcome");
       } catch {
-        // En caso de error, volvemos a login para evitar bloqueo
         router.replace("/");
       } finally {
         setLoading(false);
@@ -51,16 +46,14 @@ export default function Logueado() {
     checkAuthAndOnboarding();
   }, []);
 
-  // Mientras verifica, mostramos un loader centrado
   if (loading) {
     return (
       <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color="#5E4B8B" />
       </View>
     );
   }
 
-  // No mostramos nada más, porque siempre redirige
   return null;
 }
 

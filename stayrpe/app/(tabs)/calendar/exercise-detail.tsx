@@ -1,4 +1,3 @@
-// exercise-detail.tsx - PANTALLA DEDICADA PARA EJERCICIO ESPECÍFICO CON GRID MEJORADO
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -12,8 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-// Importar tipos desde la pantalla principal
-import type { WorkoutData, WorkoutExercise, ExerciseSet } from './workout';
+import type { WorkoutData, WorkoutExercise, ExerciseSet } from '../../workout';
 
 interface ExerciseDetailScreenProps {
   workout: WorkoutData;
@@ -34,9 +32,6 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
   onBackPress,
   onExerciseCompleted,
 }) => {
-  // =========================================================================
-  // ESTADOS LOCALES
-  // =========================================================================
   const [selectedSetIndex, setSelectedSetIndex] = useState(0);
   const [isRestTimer, setIsRestTimer] = useState(false);
   const [restTimeLeft, setRestTimeLeft] = useState(0);
@@ -44,11 +39,15 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
   const selectedExercise = workout.exercises[selectedExerciseIndex];
   const selectedSet = selectedExercise?.sets[selectedSetIndex];
 
-  // =========================================================================
-  // EFFECTS
-  // =========================================================================
+  const isValidRir = (rir: any): boolean => {
+    return rir !== undefined && rir !== null && rir >= 0 && rir <= 5;
+  };
+
+  const isValidRpe = (rpe: any): boolean => {
+    return rpe !== undefined && rpe !== null && rpe >= 1 && rpe <= 10;
+  };
+
   useEffect(() => {
-    // Buscar la primera serie incompleta cuando cambia el ejercicio
     if (selectedExercise) {
       const firstIncompleteSet = selectedExercise.sets.findIndex(set => !set.completed);
       setSelectedSetIndex(firstIncompleteSet !== -1 ? firstIncompleteSet : 0);
@@ -72,13 +71,9 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
     return () => clearInterval(interval);
   }, [isRestTimer, restTimeLeft]);
 
-  // =========================================================================
-  // FUNCIONES PARA AÑADIR/ELIMINAR SERIES
-  // =========================================================================
   const addSetToExercise = () => {
     if (!selectedExercise) return;
 
-    // Usar valores de la última serie como base
     let baseSet = {
       targetRepsMin: 8,
       targetRepsMax: 12,
@@ -100,7 +95,6 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
       };
     }
 
-    // Crear nueva serie
     const newSet: ExerciseSet = {
       id: Date.now(),
       setNumber: selectedExercise.sets.length + 1,
@@ -119,17 +113,12 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
       isNewSet: true
     };
 
-    // 🔥 MEJORADO: Crear deep copy para evitar mutaciones
     const newWorkout = JSON.parse(JSON.stringify(workout));
     newWorkout.exercises[selectedExerciseIndex].sets.push(newSet);
     newWorkout.exercises[selectedExerciseIndex].numberOfSets = newWorkout.exercises[selectedExerciseIndex].sets.length;
 
     setWorkout(newWorkout);
-
-    // Ir automáticamente a la nueva serie
     setSelectedSetIndex(newSet.setNumber - 1);
-
-    console.log(`✅ Serie ${newSet.setNumber} añadida a ${selectedExercise.exerciseName}`);
   };
 
   const removeSetFromExercise = (setIndex: number) => {
@@ -140,7 +129,6 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
 
     const setToRemove = selectedExercise.sets[setIndex];
     
-    // Si la serie está completada, preguntar confirmación
     if (setToRemove.completed) {
       Alert.alert(
         'Eliminar Serie',
@@ -151,98 +139,45 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
         ]
       );
     } else {
-      // Eliminar directamente si no está completada
       performRemoveSet(setIndex);
     }
   };
 
   const performRemoveSet = (setIndex: number) => {
-    // 🔥 MEJORADO: Crear deep copy para evitar mutaciones
     const newWorkout = JSON.parse(JSON.stringify(workout));
     
-    // Eliminar la serie
     newWorkout.exercises[selectedExerciseIndex].sets.splice(setIndex, 1);
     
-    // Renumerar las series restantes
     newWorkout.exercises[selectedExerciseIndex].sets.forEach((set: ExerciseSet, index: number) => {
       set.setNumber = index + 1;
     });
     
-    // Actualizar numberOfSets
     newWorkout.exercises[selectedExerciseIndex].numberOfSets = newWorkout.exercises[selectedExerciseIndex].sets.length;
 
     setWorkout(newWorkout);
 
-    // Ajustar selectedSetIndex si es necesario
     if (selectedSetIndex >= newWorkout.exercises[selectedExerciseIndex].sets.length) {
       setSelectedSetIndex(Math.max(0, newWorkout.exercises[selectedExerciseIndex].sets.length - 1));
     }
-
-    console.log('✅ Serie eliminada correctamente');
   };
 
-  // =========================================================================
-  // FUNCIONES PARA ACTUALIZAR Y COMPLETAR SERIES
-  // =========================================================================
   const updateSet = (setIndex: number, field: keyof ExerciseSet, value: any) => {
-    // 🔥 DEBUG: Log antes de actualizar
-    console.log('🔄 updateSet called with:', {
-      setIndex,
-      field,
-      value: JSON.stringify(value),
-      valueType: typeof value
+    setWorkout(prev => {
+      if (!prev) return prev;
+      
+      const newWorkout = JSON.parse(JSON.stringify(prev));
+      const exercise = newWorkout.exercises[selectedExerciseIndex];
+      const set = exercise.sets[setIndex];
+      
+      (set as any)[field] = value;
+      
+      return newWorkout;
     });
-
-    // 🔥 MEJORADO: Crear deep copy para evitar mutaciones
-    const newWorkout = JSON.parse(JSON.stringify(workout));
-    const exercise = newWorkout.exercises[selectedExerciseIndex];
-    const set = exercise.sets[setIndex];
-    
-    // 🔥 DEBUG: Estado antes de actualizar
-    console.log('🔄 Estado antes de actualizar:', {
-      setNumber: set.setNumber,
-      exerciseName: exercise.exerciseName,
-      fieldBefore: JSON.stringify((set as any)[field]),
-      actualNotesBefore: JSON.stringify(set.actualNotes)
-    });
-    
-    (set as any)[field] = value;
-    
-    // 🔥 DEBUG: Estado después de actualizar
-    console.log('🔄 Estado después de actualizar:', {
-      setNumber: set.setNumber,
-      fieldAfter: JSON.stringify((set as any)[field]),
-      actualNotesAfter: JSON.stringify(set.actualNotes),
-      setCompleto: JSON.stringify(set, null, 2)
-    });
-    
-    setWorkout(newWorkout);
-    
-    // 🔥 DEBUG: Log específico para actualNotes
-    if (field === 'actualNotes') {
-      console.log(`📝 NOTES DEBUG - Serie ${set.setNumber}:`, {
-        valorRecibido: JSON.stringify(value),
-        valorEnSet: JSON.stringify(set.actualNotes),
-        tipoValor: typeof value,
-        longitudTexto: value ? value.length : 'null/undefined'
-      });
-    }
   };
 
   const completeSet = (setIndex: number) => {
     const exercise = selectedExercise;
     const set = exercise.sets[setIndex];
-
-    // 🔥 DEBUG: Log del estado de la serie antes de completar
-    console.log('✅ completeSet llamado:', {
-      setNumber: set.setNumber,
-      exerciseName: exercise.exerciseName,
-      actualReps: set.actualReps,
-      actualWeight: set.actualWeight,
-      actualNotes: JSON.stringify(set.actualNotes),
-      actualNotesLength: set.actualNotes ? set.actualNotes.length : 'null/undefined',
-      serieCompleta: JSON.stringify(set, null, 2)
-    });
 
     if (!set.actualReps || set.actualReps <= 0) {
       Alert.alert('Error', 'Ingresa el número de repeticiones realizadas');
@@ -254,30 +189,18 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
       return;
     }
 
-    // 🔥 MEJORADO: Usar función de actualización consistente
     updateSet(setIndex, 'completed', true);
-
-    // 🔥 DEBUG: Verificar estado después de marcar como completada
-    console.log('✅ Serie marcada como completada, estado final:', {
-      setNumber: set.setNumber,
-      completed: true,
-      actualNotes: JSON.stringify(set.actualNotes),
-      workoutFinalState: JSON.stringify(workout.exercises[selectedExerciseIndex].sets[setIndex], null, 2)
-    });
 
     const isLastSet = setIndex === exercise.sets.length - 1;
     
     if (isLastSet) {
       const allSetsCompleted = exercise.sets.every(s => s.completed);
       if (allSetsCompleted) {
-        // 🔥 MEJORADO: Crear deep copy para marcar ejercicio como completado
         const newWorkout = JSON.parse(JSON.stringify(workout));
         newWorkout.exercises[selectedExerciseIndex].completed = true;
         setWorkout(newWorkout);
         
         Alert.alert('¡Ejercicio completado! 🎉', exercise.exerciseName);
-        
-        // Notificar a la pantalla principal para verificar si todos los ejercicios están completos
         onExerciseCompleted();
       }
     }
@@ -299,9 +222,6 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
     }
   };
 
-  // =========================================================================
-  // FUNCIONES AUXILIARES
-  // =========================================================================
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -313,13 +233,11 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
     setRestTimeLeft(0);
   };
 
-  // 🔥 NUEVO: Función para renderizar el grid de series
   const renderSetsGrid = () => {
     const sets = selectedExercise.sets;
-    const setsPerRow = 5; // Máximo 5 series por fila
+    const setsPerRow = 5;
     const rows = [];
     
-    // Crear filas de series
     for (let i = 0; i < sets.length; i += setsPerRow) {
       const rowSets = sets.slice(i, i + setsPerRow);
       rows.push(rowSets);
@@ -367,7 +285,6 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
               );
             })}
             
-            {/* Botón de añadir solo en la última fila y al final */}
             {rowIndex === rows.length - 1 && (
               <TouchableOpacity
                 style={styles.addSetInlineButton}
@@ -380,7 +297,6 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
           </View>
         ))}
         
-        {/* Si no hay series, mostrar solo el botón de añadir */}
         {sets.length === 0 && (
           <View style={styles.setsRow}>
             <TouchableOpacity
@@ -396,10 +312,6 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
     );
   };
 
-  // =========================================================================
-  // RENDERIZADO
-  // =========================================================================
-
   if (!selectedExercise) {
     return (
       <SafeAreaView style={styles.container}>
@@ -414,9 +326,22 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
     );
   }
 
+  if (!selectedSet) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={64} color="#9CA3AF" />
+          <Text style={styles.errorTitle}>Serie no encontrada</Text>
+          <TouchableOpacity style={styles.errorButton} onPress={onBackPress}>
+            <Text style={styles.errorButtonText}>Volver</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={onBackPress}>
           <Ionicons name="arrow-back" size={24} color="#1F2937" />
@@ -435,7 +360,6 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
         </View>
       </View>
 
-      {/* Temporizador de descanso */}
       {isRestTimer && (
         <View style={styles.restTimerContainer}>
           <View style={styles.restTimerCard}>
@@ -452,7 +376,6 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
       )}
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Información del ejercicio */}
         <View style={styles.exerciseDetailCard}>
           <View style={styles.exerciseDetailHeader}>
             <View style={styles.exerciseNameRow}>
@@ -473,7 +396,6 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
             </View>
           )}
 
-          {/* 🔥 NUEVO: Selector de series con GRID mejorado */}
           <View style={styles.setSelector}>
             <View style={styles.setSelectorHeader}>
               <Text style={styles.setSelectorTitle}>
@@ -489,225 +411,190 @@ const ExerciseDetailScreen: React.FC<ExerciseDetailScreenProps> = ({
               </TouchableOpacity>
             </View>
             
-            {/* 🔥 REEMPLAZADO: ScrollView horizontal por Grid */}
             {renderSetsGrid()}
           </View>
         </View>
 
-        {/* Serie actual */}
-        {selectedSet && (
-          <View style={styles.currentSetCard}>
-            <View style={styles.setHeader}>
-              <View style={styles.setTitleRow}>
-                <Text style={styles.setTitle}>
-                  Serie {selectedSet.setNumber}
-                </Text>
-                {selectedExercise.sets.length > 1 && (
-                  <TouchableOpacity
-                    style={styles.removeCurrentSetButton}
-                    onPress={() => removeSetFromExercise(selectedSetIndex)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="trash-outline" size={16} color="#6B7280" />
-                    <Text style={styles.removeCurrentSetText}>Eliminar</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              <Text style={styles.targetText}>
-                {selectedSet.targetRepsMin}-{selectedSet.targetRepsMax} reps × {selectedSet.targetWeight}kg
-                {(() => {
-                  // 🔥 FIX: Mostrar solo RIR o RPE, no ambos
-                  if (selectedSet.rpe !== undefined && selectedSet.rpe !== null && selectedSet.rpe >= 1) {
-                    return ` (@${selectedSet.rpe} RPE)`;
-                  } else if (selectedSet.rir !== undefined && selectedSet.rir !== null && selectedSet.rir >= 0) {
-                    return ` (${selectedSet.rir} RIR)`;
-                  }
-                  return '';
-                })()}
+        <View style={styles.currentSetCard}>
+          <View style={styles.setHeader}>
+            <View style={styles.setTitleRow}>
+              <Text style={styles.setTitle}>
+                Serie {selectedSet.setNumber}
               </Text>
-              
-              {/* 🔥 NUEVO: Mostrar notas planificadas si existen */}
-              {selectedSet.notes && selectedSet.notes.trim() && (
-                <View style={styles.targetNotesContainer}>
-                  <Ionicons name="document-text-outline" size={14} color="#5E4B8B" />
-                  <Text style={styles.targetNotesText}>
-                    Notas: {selectedSet.notes}
-                  </Text>
-                </View>
+              {selectedExercise.sets.length > 1 && (
+                <TouchableOpacity
+                  style={styles.removeCurrentSetButton}
+                  onPress={() => removeSetFromExercise(selectedSetIndex)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#6B7280" />
+                  <Text style={styles.removeCurrentSetText}>Eliminar</Text>
+                </TouchableOpacity>
               )}
             </View>
-
-            <View style={styles.inputsContainer}>
-              {/* Primera fila: Repeticiones y Peso */}
-              <View style={styles.inputRow}>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Repeticiones</Text>
-                  <TextInput
-                    style={[styles.input, selectedSet.completed && styles.completedInput]}
-                    value={selectedSet.actualReps?.toString() || ''}
-                    onChangeText={(text) => updateSet(selectedSetIndex, 'actualReps', parseInt(text) || 0)}
-                    keyboardType="number-pad"
-                    placeholder={`${selectedSet.targetRepsMin}-${selectedSet.targetRepsMax}`}
-                    placeholderTextColor="#9CA3AF"
-                    editable={!selectedSet.completed}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Peso (kg)</Text>
-                  <TextInput
-                    style={[styles.input, selectedSet.completed && styles.completedInput]}
-                    value={selectedSet.actualWeight?.toString() || ''}
-                    onChangeText={(text) => updateSet(selectedSetIndex, 'actualWeight', parseFloat(text) || 0)}
-                    keyboardType="numeric"
-                    placeholder={selectedSet.targetWeight.toString()}
-                    placeholderTextColor="#9CA3AF"
-                    editable={!selectedSet.completed}
-                  />
-                </View>
+            <Text style={styles.targetText}>
+              {selectedSet.targetRepsMin}-{selectedSet.targetRepsMax} reps × {selectedSet.targetWeight}kg
+              {(() => {
+                if (isValidRpe(selectedSet.rpe)) {
+                  return ` (@${selectedSet.rpe} RPE)`;
+                } else if (isValidRir(selectedSet.rir)) {
+                  return ` (${selectedSet.rir} RIR)`;
+                }
+                return '';
+              })()}
+            </Text>
+            
+            {selectedSet.notes && selectedSet.notes.trim() && (
+              <View style={styles.targetNotesContainer}>
+                <Ionicons name="document-text-outline" size={14} color="#5E4B8B" />
+                <Text style={styles.targetNotesText}>
+                  Notas: {selectedSet.notes}
+                </Text>
               </View>
+            )}
+          </View>
 
-              {/* Segunda fila: RIR o RPE (solo el que esté pautado) */}
-              {(selectedSet.rir !== undefined || selectedSet.rpe !== undefined) && (
-                <View style={styles.intensityRow}>
-                  <Text style={styles.intensityLabel}>
-                    Intensidad percibida:
-                  </Text>
-                  
-                  {/* 🔥 FIX: Solo mostrar RIR si está definido y RPE no está definido */}
-                  {selectedSet.rir !== undefined && selectedSet.rir !== null && (selectedSet.rpe === undefined || selectedSet.rpe === null) && (
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>
-                        RIR (0-5)
-                      </Text>
-                      <TextInput
-                        style={[styles.input, selectedSet.completed && styles.completedInput]}
-                        value={selectedSet.actualRir?.toString() || ''}
-                        onChangeText={(text) => {
-                          const value = parseInt(text);
-                          if (isNaN(value)) {
-                            updateSet(selectedSetIndex, 'actualRir', undefined);
-                          } else {
-                            const clampedValue = Math.min(Math.max(value, 0), 5);
-                            updateSet(selectedSetIndex, 'actualRir', clampedValue);
-                          }
-                        }}
-                        keyboardType="number-pad"
-                        placeholder={selectedSet.rir?.toString() || '2'}
-                        placeholderTextColor="#9CA3AF"
-                        editable={!selectedSet.completed}
-                      />
-                    </View>
-                  )}
-
-                  {/* 🔥 FIX: Solo mostrar RPE si está definido y RIR no está definido */}
-                  {selectedSet.rpe !== undefined && selectedSet.rpe !== null && (selectedSet.rir === undefined || selectedSet.rir === null) && (
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>
-                        RPE (1-10)
-                      </Text>
-                      <TextInput
-                        style={[styles.input, selectedSet.completed && styles.completedInput]}
-                        value={selectedSet.actualRpe?.toString() || ''}
-                        onChangeText={(text) => {
-                          const value = parseInt(text);
-                          if (isNaN(value)) {
-                            updateSet(selectedSetIndex, 'actualRpe', undefined);
-                          } else {
-                            const clampedValue = Math.min(Math.max(value, 1), 10);
-                            updateSet(selectedSetIndex, 'actualRpe', clampedValue);
-                          }
-                        }}
-                        keyboardType="number-pad"
-                        placeholder={selectedSet.rpe?.toString() || '8'}
-                        placeholderTextColor="#9CA3AF"
-                        editable={!selectedSet.completed}
-                      />
-                    </View>
-                  )}
-                </View>
-              )}
-
-              {/* Tercera fila: Notas (opcional) */}
-              <View style={styles.notesInputContainer}>
-                <Text style={styles.inputLabel}>Notas de la serie (opcional)</Text>
+          <View style={styles.inputsContainer}>
+            <View style={styles.inputRow}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Repeticiones</Text>
                 <TextInput
-                  style={[styles.notesInput, selectedSet.completed && styles.completedInput]}
-                  value={selectedSet.actualNotes || ''}
-                  onChangeText={(text) => {
-                    // 🔥 DEBUG: Log de entrada del TextInput
-                    console.log('📝 TextInput onChangeText llamado:', {
-                      textoRecibido: JSON.stringify(text),
-                      textoLength: text.length,
-                      textoTrimmed: JSON.stringify(text.trim()),
-                      trimmedLength: text.trim().length,
-                      setNumber: selectedSet.setNumber,
-                      exerciseName: selectedExercise.exerciseName
-                    });
-
-                    // 🔥 FIX: Mejorar manejo de las notas
-                    const trimmedText = text.trim();
-                    const finalValue = trimmedText.length > 0 ? trimmedText : undefined;
-                    
-                    // 🔥 DEBUG: Log del valor final
-                    console.log('📝 Valor final que se va a guardar:', {
-                      finalValue: JSON.stringify(finalValue),
-                      finalValueType: typeof finalValue,
-                      setNumber: selectedSet.setNumber
-                    });
-                    
-                    updateSet(selectedSetIndex, 'actualNotes', finalValue);
-                  }}
-                  placeholder="Ej: Me costó la última rep, usé ayuda..."
+                  style={[styles.input, selectedSet.completed && styles.completedInput]}
+                  value={selectedSet.actualReps?.toString() || ''}
+                  onChangeText={(text) => updateSet(selectedSetIndex, 'actualReps', parseInt(text) || 0)}
+                  keyboardType="number-pad"
+                  placeholder={`${selectedSet.targetRepsMin}-${selectedSet.targetRepsMax}`}
                   placeholderTextColor="#9CA3AF"
-                  multiline
-                  numberOfLines={2}
-                  textAlignVertical="top"
                   editable={!selectedSet.completed}
-                  autoCapitalize="sentences"
-                  autoCorrect={true}
-                  maxLength={200}
                 />
               </View>
 
-              <TouchableOpacity
-                style={[
-                  styles.completeSetButton,
-                  selectedSet.completed && styles.completedSetButton
-                ]}
-                onPress={() => completeSet(selectedSetIndex)}
-                disabled={selectedSet.completed}
-              >
-                <View style={styles.completeButtonContent}>
-                  {selectedSet.completed ? (
-                    <>
-                      <Ionicons name="checkmark-circle" size={24} color="white" />
-                      <Text style={styles.completeButtonText}>Serie Completada</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Ionicons name="checkmark" size={24} color="white" />
-                      <Text style={styles.completeButtonText}>Completar Serie</Text>
-                    </>
-                  )}
-                </View>
-              </TouchableOpacity>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Peso (kg)</Text>
+                <TextInput
+                  style={[styles.input, selectedSet.completed && styles.completedInput]}
+                  value={selectedSet.actualWeight?.toString() || ''}
+                  onChangeText={(text) => updateSet(selectedSetIndex, 'actualWeight', parseFloat(text) || 0)}
+                  keyboardType="numeric"
+                  placeholder={selectedSet.targetWeight.toString()}
+                  placeholderTextColor="#9CA3AF"
+                  editable={!selectedSet.completed}
+                />
+              </View>
             </View>
+
+            {(isValidRir(selectedSet.rir) || isValidRpe(selectedSet.rpe)) && (
+              <View style={styles.intensityRow}>
+                <Text style={styles.intensityLabel}>
+                  Intensidad percibida:
+                </Text>
+                
+                {isValidRir(selectedSet.rir) && !isValidRpe(selectedSet.rpe) && (
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>RIR (0-5)</Text>
+                    <TextInput
+                      style={[styles.input, selectedSet.completed && styles.completedInput]}
+                      value={selectedSet.actualRir?.toString() || ''}
+                      onChangeText={(text) => {
+                        if (text === '' || text === null || text === undefined) {
+                          updateSet(selectedSetIndex, 'actualRir', undefined);
+                        } else {
+                          const value = parseInt(text);
+                          if (!isNaN(value)) {
+                            const clampedValue = Math.min(Math.max(value, 0), 5);
+                            updateSet(selectedSetIndex, 'actualRir', clampedValue);
+                          }
+                        }
+                      }}
+                      keyboardType="number-pad"
+                      placeholder={selectedSet.rir?.toString() || '2'}
+                      placeholderTextColor="#9CA3AF"
+                      editable={!selectedSet.completed}
+                      selectTextOnFocus={true}
+                    />
+                  </View>
+                )}
+
+                {isValidRpe(selectedSet.rpe) && !isValidRir(selectedSet.rir) && (
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>RPE (1-10)</Text>
+                    <TextInput
+                      style={[styles.input, selectedSet.completed && styles.completedInput]}
+                      value={selectedSet.actualRpe?.toString() || ''}
+                      onChangeText={(text) => {
+                        if (text === '' || text === null || text === undefined) {
+                          updateSet(selectedSetIndex, 'actualRpe', undefined);
+                        } else {
+                          const value = parseInt(text);
+                          if (!isNaN(value)) {
+                            const clampedValue = Math.min(Math.max(value, 1), 10);
+                            updateSet(selectedSetIndex, 'actualRpe', clampedValue);
+                          }
+                        }
+                      }}
+                      keyboardType="number-pad"
+                      placeholder={selectedSet.rpe?.toString() || '8'}
+                      placeholderTextColor="#9CA3AF"
+                      editable={!selectedSet.completed}
+                      selectTextOnFocus={true}
+                    />
+                  </View>
+                )}
+              </View>
+            )}
+
+            <View style={styles.notesInputContainer}>
+              <Text style={styles.inputLabel}>Notas de la serie (opcional)</Text>
+              <TextInput
+                style={[styles.notesInput, selectedSet.completed && styles.completedInput]}
+                value={selectedSet.actualNotes || ''}
+                onChangeText={(text) => updateSet(selectedSetIndex, 'actualNotes', text || undefined)}
+                placeholder="Ej: Me costó la última rep, usé ayuda..."
+                placeholderTextColor="#9CA3AF"
+                multiline
+                numberOfLines={2}
+                textAlignVertical="top"
+                editable={!selectedSet.completed}
+                autoCapitalize="sentences"
+                autoCorrect={true}
+                maxLength={200}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.completeSetButton,
+                selectedSet.completed && styles.completedSetButton
+              ]}
+              onPress={() => completeSet(selectedSetIndex)}
+              disabled={selectedSet.completed}
+            >
+              <View style={styles.completeButtonContent}>
+                {selectedSet.completed ? (
+                  <>
+                    <Ionicons name="checkmark-circle" size={24} color="white" />
+                    <Text style={styles.completeButtonText}>Serie Completada</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="checkmark" size={24} color="white" />
+                    <Text style={styles.completeButtonText}>Completar Serie</Text>
+                  </>
+                )}
+              </View>
+            </TouchableOpacity>
           </View>
-        )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 };
 
-// =========================================================================
-// ESTILOS MEJORADOS CON GRID
-// =========================================================================
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FAFAFA',
+    marginBottom: 70
   },
   errorContainer: {
     flex: 1,
@@ -734,8 +621,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -782,8 +667,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#5E4B8B',
   },
-
-  // Temporizador de descanso
   restTimerContainer: {
     position: 'absolute',
     top: 0,
@@ -838,14 +721,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-
-  // Contenido
   content: {
     flex: 1,
     padding: 20,
   },
-
-  // Vista de ejercicio específico
   exerciseDetailCard: {
     backgroundColor: 'white',
     borderRadius: 16,
@@ -893,12 +772,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     backgroundColor: '#F8FAFC',
-    padding: 16,
-    borderRadius: 12,
+    padding: 12,
+    borderRadius: 8,
     marginBottom: 16,
-    gap: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: '#E5E7EB',
+    gap: 8,
   },
   notesText: {
     flex: 1,
@@ -906,8 +783,6 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     lineHeight: 20,
   },
-
-  // 🔥 NUEVO: Estilos para el grid de series
   setSelector: {
     marginTop: 8,
   },
@@ -938,8 +813,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-
-  // 🔥 NUEVO: Grid de series - Reemplaza el ScrollView horizontal
   setsGrid: {
     marginBottom: 8,
   },
@@ -948,11 +821,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     alignItems: 'center',
     marginBottom: 12,
-    paddingHorizontal: 4, // Padding para que las X no se salgan
+    paddingHorizontal: 4,
   },
   setOptionContainer: {
     position: 'relative',
-    marginRight: 12, // Espacio entre series
+    marginRight: 12,
     alignItems: 'center',
   },
   setOption: {
@@ -992,8 +865,15 @@ const styles = StyleSheet.create({
   completedSetOptionText: {
     color: 'white',
   },
-  
-  // Botón × para eliminar serie
+  newSetIndicator: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#F59E0B',
+  },
   removeSetButton: {
     position: 'absolute',
     top: -6,
@@ -1012,7 +892,6 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
-  // Botón + inline para añadir series
   addSetInlineButton: {
     width: 48,
     height: 48,
@@ -1025,8 +904,6 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     marginLeft: 8,
   },
-
-  // Serie actual
   currentSetCard: {
     backgroundColor: 'white',
     borderRadius: 16,
@@ -1075,8 +952,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     lineHeight: 22,
   },
-  
-  // 🔥 NUEVO: Estilos para notas planificadas
   targetNotesContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1095,7 +970,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     lineHeight: 18,
   },
-  
   inputsContainer: {
     gap: 20,
   },

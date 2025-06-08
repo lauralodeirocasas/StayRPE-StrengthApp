@@ -1,5 +1,3 @@
-// app/onboarding/_layout.tsx
-
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
@@ -8,14 +6,14 @@ export default function OnboardingLayout() {
     <>
       <Stack
         screenOptions={{
-          headerShown: false,  // Oculta el header por defecto
+          headerShown: false,
         }}
       >
         <Stack.Screen name="welcome" />
         <Stack.Screen 
           name="personal-data" 
           options={{
-            headerShown: false, // Mostrar header solo en esta pantalla
+            headerShown: false,
             animation: 'slide_from_right',
           }}
         />

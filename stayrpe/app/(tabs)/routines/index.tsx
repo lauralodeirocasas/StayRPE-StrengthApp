@@ -8,12 +8,18 @@ import {
   ActivityIndicator,
   Alert,
   SafeAreaView,
-  RefreshControl
+  RefreshControl,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface RoutineExercise {
   id: number;
@@ -47,19 +53,39 @@ interface Routine {
   isActive: boolean;
   totalExercises: number;
   totalSets: number;
-  exercises?: RoutineExercise[]; // Para cuando obtenemos detalles completos
+  exercises?: RoutineExercise[];
 }
+
+const AnimatedIcon = ({ name, size = 20, color, isRotated = false, style = {} }) => {
+  return (
+    <View style={[
+      {
+        transform: [{ rotate: isRotated ? '180deg' : '0deg' }],
+      },
+      style
+    ]}>
+      <Ionicons name={name} size={size} color={color} />
+    </View>
+  );
+};
 
 const RoutinesScreen = () => {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [token, setToken] = useState<string | null>(null);
+  const [currentUsername, setCurrentUsername] = useState<string | null>(null);
+  const [showInfoCard, setShowInfoCard] = useState(true);
+  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
+  const [routineDetails, setRoutineDetails] = useState<Record<number, RoutineExercise[]>>({});
+  const [loadingDetails, setLoadingDetails] = useState<Set<number>>(new Set());
+  
   const router = useRouter();
 
   const API_URL = 'http://192.168.0.57:8080';
 
-  // Cargar token al inicializar
+  const getInfoCardKey = (username: string) => `routines_info_hidden_${username}`;
+
   useEffect(() => {
     const getToken = async () => {
       try {
@@ -72,7 +98,46 @@ const RoutinesScreen = () => {
     getToken();
   }, []);
 
-  // Cargar rutinas cuando se obtiene el token o cuando se enfoca la pantalla
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      if (!token) return;
+
+      try {
+        const response = await fetch(`${API_URL}/user/profile`, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const userData = await response.json();
+          setCurrentUsername(userData.username);
+        }
+      } catch (error) {
+        console.error('Error obteniendo usuario actual:', error);
+      }
+    };
+
+    getCurrentUser();
+  }, [token]);
+
+  useEffect(() => {
+    const checkInfoCardVisibility = async () => {
+      if (!currentUsername) return;
+
+      try {
+        const userSpecificKey = getInfoCardKey(currentUsername);
+        const isHidden = await AsyncStorage.getItem(userSpecificKey);
+        setShowInfoCard(isHidden !== 'true');
+      } catch (error) {
+        console.error('Error checking info card visibility:', error);
+      }
+    };
+
+    checkInfoCardVisibility();
+  }, [currentUsername]);
+
   useFocusEffect(
     React.useCallback(() => {
       if (token) {
@@ -80,6 +145,18 @@ const RoutinesScreen = () => {
       }
     }, [token])
   );
+
+  const hideInfoCard = async () => {
+    if (!currentUsername) return;
+
+    try {
+      const userSpecificKey = getInfoCardKey(currentUsername);
+      await AsyncStorage.setItem(userSpecificKey, 'true');
+      setShowInfoCard(false);
+    } catch (error) {
+      console.error('Error hiding info card:', error);
+    }
+  };
 
   const loadRoutines = async () => {
     if (!token) return;
@@ -93,7 +170,6 @@ const RoutinesScreen = () => {
         }
       });
 
-      // 🔥 VERIFICACIÓN TOKEN EXPIRADO
       if (response.status === 401) {
         await AsyncStorage.removeItem("token");
         await AsyncStorage.removeItem("onboardingComplete");
@@ -105,19 +181,15 @@ const RoutinesScreen = () => {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('📋 Rutinas recibidas del backend:', data);
         
-        // Si el backend devuelve RoutineListResponse, ya tiene totalExercises y totalSets
-        // Si no, las calculamos manualmente
         const routinesWithCounts = data.map((routine: any) => ({
           ...routine,
-          // Si el backend ya envía estos valores, los usamos; si no, los calculamos
           totalExercises: routine.totalExercises ?? (routine.exercises?.length || 0),
           totalSets: routine.totalSets ?? calculateTotalSets(routine)
         }));
         
-        console.log('📊 Rutinas procesadas:', routinesWithCounts);
         setRoutines(routinesWithCounts);
+        setRoutineDetails({});
       } else {
         console.error('Error cargando rutinas:', response.status);
         Alert.alert('Error', 'No se pudieron cargar las rutinas');
@@ -130,12 +202,101 @@ const RoutinesScreen = () => {
     }
   };
 
-  // Función auxiliar para calcular series totales si el backend no las envía
+  const loadRoutineDetails = async (routineId: number, forceReload = false) => {
+    if (!token || (routineDetails[routineId] && !forceReload)) return;
+
+    try {
+      setLoadingDetails(prev => new Set(prev).add(routineId));
+      
+      const response = await fetch(`${API_URL}/routines/${routineId}`, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.status === 401) {
+        await AsyncStorage.removeItem("token");
+        await AsyncStorage.removeItem("onboardingComplete");
+        Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
+          { text: "OK", onPress: () => router.replace("/") }
+        ]);
+        return;
+      }
+
+      if (response.ok) {
+        const data = await response.json();
+        setRoutineDetails(prev => ({
+          ...prev,
+          [routineId]: data.exercises || []
+        }));
+      } else {
+        console.error('Error cargando detalles de rutina:', response.status);
+      }
+    } catch (error) {
+      console.error('Error de conexión al cargar detalles de rutina:', error);
+    } finally {
+      setLoadingDetails(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(routineId);
+        return newSet;
+      });
+    }
+  };
+
+  const toggleExpanded = async (routineId: number) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    
+    const isCurrentlyExpanded = expandedItems.has(routineId);
+    
+    setExpandedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(routineId)) {
+        newSet.delete(routineId);
+      } else {
+        newSet.add(routineId);
+      }
+      return newSet;
+    });
+
+    if (!isCurrentlyExpanded) {
+      await loadRoutineDetails(routineId, true);
+    }
+  };
+
+  const invalidateRoutineDetails = (routineId: number) => {
+    setRoutineDetails(prev => {
+      const { [routineId]: removed, ...rest } = prev;
+      return rest;
+    });
+  };
+
+  const startFreeWorkout = (routine: Routine) => {
+    Alert.alert(
+      'Entrenamiento Libre',
+      `¿Quieres iniciar un entrenamiento libre con la rutina "${routine.name}"?\n\nEste entrenamiento no formará parte de ningún macrociclo.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Iniciar',
+          onPress: () => {
+            router.push({
+              pathname: '/workout',
+              params: {
+                routineId: routine.id.toString(),
+                routineName: routine.name,
+              }
+            });
+          }
+        }
+      ]
+    );
+  };
+
   const calculateTotalSets = (routine: any) => {
     if (!routine.exercises) return 0;
     
     return routine.exercises.reduce((total: number, exercise: any) => {
-      // Puede ser exercise.sets.length o exercise.numberOfSets
       const exerciseSets = exercise.sets?.length || exercise.numberOfSets || 0;
       return total + exerciseSets;
     }, 0);
@@ -148,130 +309,42 @@ const RoutinesScreen = () => {
   };
 
   const editRoutine = async (routineId: number, routineName: string) => {
-  try {
-    // Obtener los detalles completos de la rutina
-    const response = await fetch(`${API_URL}/routines/${routineId}`, {
-      headers: { 
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    // VERIFICACIÓN TOKEN EXPIRADO
-    if (response.status === 401) {
-      await AsyncStorage.removeItem("token");
-      await AsyncStorage.removeItem("onboardingComplete");
-      Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
-        { text: "OK", onPress: () => router.replace("/") }
-      ]);
-      return;
-    }
-
-    if (response.ok) {
-      const routineDetails = await response.json();
-      console.log('📋 Detalles de rutina para edición:', routineDetails);
-      
-      // CAMBIO: Navegar a create en lugar de edit-routine
-      router.push({
-        pathname: '/(tabs)/routines/create',
-        params: { 
-          routineId: routineId.toString(),
-          routineData: JSON.stringify(routineDetails),
-          isEditing: 'true' // Flag para indicar que es edición
+    try {
+      const response = await fetch(`${API_URL}/routines/${routineId}`, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
       });
-    } else {
-      Alert.alert('❌ Error', 'No se pudieron cargar los detalles de la rutina');
-    }
-  } catch (error) {
-    console.error('Error obteniendo detalles de rutina:', error);
-    Alert.alert('❌ Error', 'Error de conexión');
-  }
-};
 
-  const showRoutineActions = (routine: Routine) => {
-    Alert.alert(
-      routine.name,
-      'Selecciona una acción',
-      [
-        {
-          text: 'Ver Detalles',
-          onPress: () => viewRoutineDetails(routine)
-        },
-        {
-          text: 'Editar',
-          onPress: () => editRoutine(routine.id, routine.name)
-        },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: () => deleteRoutine(routine.id, routine.name)
-        },
-        {
-          text: 'Cancelar',
-          style: 'cancel'
-        }
-      ]
-    );
-  };
+      if (response.status === 401) {
+        await AsyncStorage.removeItem("token");
+        await AsyncStorage.removeItem("onboardingComplete");
+        Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
+          { text: "OK", onPress: () => router.replace("/") }
+        ]);
+        return;
+      }
 
-  const viewRoutineDetails = async (routine: Routine) => {
-    try {
-      // Si ya tenemos los ejercicios, usarlos; si no, cargarlos
-      let routineWithExercises = routine;
-      
-      if (!routine.exercises) {
-        const response = await fetch(`${API_URL}/routines/${routine.id}`, {
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
+      if (response.ok) {
+        const routineDetails = await response.json();
+        
+        invalidateRoutineDetails(routineId);
+        
+        router.push({
+          pathname: '/(tabs)/routines/create',
+          params: { 
+            routineId: routineId.toString(),
+            routineData: JSON.stringify(routineDetails),
+            isEditing: 'true'
           }
         });
-
-        // 🔥 VERIFICACIÓN TOKEN EXPIRADO
-        if (response.status === 401) {
-          await AsyncStorage.removeItem("token");
-          await AsyncStorage.removeItem("onboardingComplete");
-          Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
-            { text: "OK", onPress: () => router.replace("/") }
-          ]);
-          return;
-        }
-        
-        if (response.ok) {
-          routineWithExercises = await response.json();
-        }
+      } else {
+        Alert.alert('❌ Error', 'No se pudieron cargar los detalles de la rutina');
       }
-      
-      const exercisesList = routineWithExercises.exercises?.map((ex, index) => 
-        `${index + 1}. ${ex.exerciseName} (${ex.sets?.length || ex.numberOfSets} series)`
-      ).join('\n') || 'Sin ejercicios';
-
-      const totalExercises = routineWithExercises.exercises?.length || routine.totalExercises || 0;
-      const totalSets = routineWithExercises.exercises ? 
-        calculateTotalSets(routineWithExercises) : 
-        routine.totalSets || 0;
-
-      Alert.alert(
-        `📋 ${routine.name}`,
-        `${routine.description ? routine.description + '\n\n' : ''}` +
-        `📅 Creada: ${formatDate(routine.createdAt)}\n` +
-        `💪 ${totalExercises} ejercicios\n` +
-        `🔢 ${totalSets} series totales\n\n` +
-        `Ejercicios:\n${exercisesList}`,
-        [{ text: 'Cerrar' }]
-      );
     } catch (error) {
-      console.error('Error cargando detalles:', error);
-      // Mostrar información básica si no se pueden cargar los detalles
-      Alert.alert(
-        `📋 ${routine.name}`,
-        `${routine.description ? routine.description + '\n\n' : ''}` +
-        `📅 Creada: ${formatDate(routine.createdAt)}\n` +
-        `💪 ${routine.totalExercises || 0} ejercicios\n` +
-        `🔢 ${routine.totalSets || 0} series totales`,
-        [{ text: 'Cerrar' }]
-      );
+      console.error('Error obteniendo detalles de rutina:', error);
+      Alert.alert('❌ Error', 'Error de conexión');
     }
   };
 
@@ -294,7 +367,6 @@ const RoutinesScreen = () => {
                 }
               });
 
-              // 🔥 VERIFICACIÓN TOKEN EXPIRADO
               if (response.status === 401) {
                 await AsyncStorage.removeItem("token");
                 await AsyncStorage.removeItem("onboardingComplete");
@@ -305,14 +377,77 @@ const RoutinesScreen = () => {
               }
 
               if (response.ok) {
-                Alert.alert('✅ Eliminada', 'Rutina eliminada correctamente');
-                loadRoutines(); // Recargar la lista
+                Alert.alert('Eliminada', 'Rutina eliminada correctamente');
+                loadRoutines();
+                
+                setExpandedItems(prev => {
+                  const newSet = new Set(prev);
+                  newSet.delete(routineId);
+                  return newSet;
+                });
+                setRoutineDetails(prev => {
+                  const { [routineId]: removed, ...rest } = prev;
+                  return rest;
+                });
               } else {
-                Alert.alert('❌ Error', 'No se pudo eliminar la rutina');
+                let errorMessage = 'No se pudo eliminar la rutina';
+                
+                try {
+                  const responseText = await response.text();
+                  
+                  if (responseText) {
+                    try {
+                      const errorData = JSON.parse(responseText);
+                      if (errorData.error) {
+                        errorMessage = errorData.error;
+                      } else if (errorData.message) {
+                        errorMessage = errorData.message;
+                      }
+                    } catch (jsonError) {
+                      console.log('Respuesta no es JSON válido:', responseText);
+                    }
+                  }
+                } catch (textError) {
+                  console.error('Error leyendo respuesta:', textError);
+                }
+                
+                if (errorMessage === 'No se pudo eliminar la rutina') {
+                  switch (response.status) {
+                    case 409:
+                      errorMessage = 'No se puede eliminar la rutina porque está siendo utilizada en uno o más macrociclos activos. Primero elimina o archiva los macrociclos que la usan.';
+                      break;
+                    case 400:
+                      errorMessage = 'La rutina no se puede eliminar porque está en uso.';
+                      break;
+                    case 403:
+                      errorMessage = 'No tienes permisos para eliminar esta rutina.';
+                      break;
+                    case 404:
+                      errorMessage = 'La rutina no existe o ya fue eliminada.';
+                      break;
+                    case 500:
+                      errorMessage = 'Error interno del servidor. Intenta de nuevo más tarde.';
+                      break;
+                    default:
+                      errorMessage = `Error del servidor (${response.status}). No se pudo eliminar la rutina.`;
+                  }
+                }
+
+                console.log(`Error ${response.status} eliminando rutina:`, errorMessage);
+                
+                Alert.alert(
+                  '❌ No se puede eliminar', 
+                  errorMessage,
+                  [{ text: 'Entendido' }]
+                );
               }
             } catch (error) {
-              console.error('Error eliminando rutina:', error);
-              Alert.alert('❌ Error', 'Error de conexión');
+              console.error('Error de red eliminando rutina:', error);
+              Alert.alert(
+                '❌ Error de Conexión', 
+                'No se pudo conectar con el servidor. Verifica tu conexión a internet e intenta de nuevo.',
+                [{ text: 'Entendido' }]
+              );
             }
           }
         }
@@ -346,7 +481,6 @@ const RoutinesScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* Header moderno */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.headerTextContainer}>
@@ -366,7 +500,6 @@ const RoutinesScreen = () => {
         </View>
       </View>
 
-      {/* Lista de rutinas */}
       <ScrollView 
         style={styles.content}
         contentContainerStyle={styles.scrollContent}
@@ -380,6 +513,30 @@ const RoutinesScreen = () => {
           />
         }
       >
+        {routines.length > 0 && showInfoCard && currentUsername && (
+          <View style={styles.infoCard}>
+            <View style={styles.infoHeader}>
+              <View style={styles.infoHeaderLeft}>
+                <Ionicons name="information-circle" size={20} color="#5E4B8B" />
+                <Text style={styles.infoTitle}>Información</Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={hideInfoCard}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={18} color="#8B7AB8" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.infoText}>
+              • Toca "Entrenar" para iniciar un entrenamiento libre{'\n'}
+              • Los entrenamientos libres no afectan tu progreso en macrociclos{'\n'}
+              • Toca el ícono de flecha para ver los ejercicios{'\n'}
+              • Las rutinas usadas en macrociclos activos no se pueden eliminar
+            </Text>
+          </View>
+        )}
+
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#5E4B8B" />
@@ -402,94 +559,183 @@ const RoutinesScreen = () => {
               <Ionicons name="add-circle" size={20} color="white" />
               <Text style={styles.emptyButtonText}>Crear Primera Rutina</Text>
             </TouchableOpacity>
+
+            {showInfoCard && currentUsername && (
+              <View style={styles.infoCard}>
+                <View style={styles.infoHeader}>
+                  <View style={styles.infoHeaderLeft}>
+                    <Ionicons name="information-circle" size={20} color="#5E4B8B" />
+                    <Text style={styles.infoTitle}>¿Qué es una rutina?</Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.closeButton}
+                    onPress={hideInfoCard}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="close" size={18} color="#8B7AB8" />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.infoText}>
+                  Una rutina es una secuencia planificada de ejercicios con series, repeticiones y pesos específicos. Las rutinas se pueden usar en macrociclos o como entrenamientos libres.
+                </Text>
+              </View>
+            )}
           </View>
         ) : (
           <View style={styles.routinesList}>
-            {routines.map((routine) => (
-              <TouchableOpacity 
-                key={routine.id} 
-                style={styles.routineCard}
-                onPress={() => showRoutineActions(routine)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.routineHeader}>
-                  <View style={styles.routineInfo}>
-                    <Text style={styles.routineName}>{routine.name}</Text>
-                    {routine.description && (
-                      <Text style={styles.routineDescription}>{routine.description}</Text>
-                    )}
-                    <View style={styles.routineStats}>
-                      <View style={styles.statChip}>
-                        <Ionicons name="barbell-outline" size={14} color="#5E4B8B" />
-                        <Text style={styles.statText}>
-                          {routine.totalExercises || 0} ejercicios
-                        </Text>
-                      </View>
-                      <View style={styles.statChip}>
-                        <Ionicons name="layers-outline" size={14} color="#5E4B8B" />
-                        <Text style={styles.statText}>
-                          {routine.totalSets || 0} series
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={styles.routineDate}>
-                      Creada el {formatDate(routine.createdAt)}
-                    </Text>
-                  </View>
-                  
-                  <View style={styles.routineActions}>
-                    <TouchableOpacity 
-                      style={[styles.actionButton, styles.editButton]}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        editRoutine(routine.id, routine.name);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="pencil" size={16} color="#fff" />
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={[styles.actionButton, styles.deleteButton]}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        deleteRoutine(routine.id, routine.name);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="trash" size={16} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
+            {routines.map((routine) => {
+              const isExpanded = expandedItems.has(routine.id);
+              const exercises = routineDetails[routine.id] || [];
+              const isLoadingExercises = loadingDetails.has(routine.id);
 
-                {/* Preview de ejercicios - Solo si tenemos la data completa */}
-                {routine.exercises && routine.exercises.length > 0 && (
-                  <View style={styles.exercisesPreview}>
-                    <Text style={styles.previewTitle}>Ejercicios incluidos:</Text>
-                    <View style={styles.exercisesList}>
-                      {routine.exercises.slice(0, 3).map((exercise, index) => (
-                        <View key={index} style={styles.exercisePreviewItem}>
-                          <View style={styles.exerciseNumber}>
-                            <Text style={styles.exerciseNumberText}>{index + 1}</Text>
-                          </View>
-                          <View style={styles.exercisePreviewInfo}>
-                            <Text style={styles.exercisePreviewName}>{exercise.exerciseName}</Text>
-                            <Text style={styles.exercisePreviewSets}>
-                              {exercise.sets?.length || exercise.numberOfSets} series
-                            </Text>
-                          </View>
+              return (
+                <View key={routine.id} style={styles.routineCard}>
+                  <View style={styles.routineHeader}>
+                    <View style={styles.routineInfo}>
+                      <Text style={styles.routineName}>{routine.name}</Text>
+                      {routine.description && (
+                        <Text style={styles.routineDescription}>{routine.description}</Text>
+                      )}
+                      <View style={styles.routineStats}>
+                        <View style={styles.statChip}>
+                          <Ionicons name="barbell-outline" size={14} color="#5E4B8B" />
+                          <Text style={styles.statText}>
+                            {routine.totalExercises || 0} ejercicios
+                          </Text>
                         </View>
-                      ))}
-                      {routine.exercises.length > 3 && (
-                        <Text style={styles.moreExercises}>
-                          +{routine.exercises.length - 3} ejercicios más...
+                        <View style={styles.statChip}>
+                          <Ionicons name="layers-outline" size={14} color="#5E4B8B" />
+                          <Text style={styles.statText}>
+                            {routine.totalSets || 0} series
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.routineDate}>
+                        Creada el {formatDate(routine.createdAt)}
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.routineActions}>
+                      <TouchableOpacity 
+                        style={[styles.actionButton, styles.workoutButton]}
+                        onPress={() => startFreeWorkout(routine)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="play" size={16} color="#fff" />
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.actionButton, styles.editButton]}
+                        onPress={() => editRoutine(routine.id, routine.name)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="pencil" size={16} color="#fff" />
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.actionButton, styles.deleteButton]}
+                        onPress={() => deleteRoutine(routine.id, routine.name)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="trash" size={16} color="#fff" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.expandButton]}
+                        onPress={() => toggleExpanded(routine.id)}
+                        activeOpacity={0.7}
+                      >
+                        <AnimatedIcon 
+                          name="chevron-down" 
+                          size={16} 
+                          color="white"
+                          isRotated={isExpanded}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {isExpanded && (
+                    <View style={styles.expandedContent}>
+                      <View style={styles.exercisesHeader}>
+                        <View style={styles.exercisesTitleRow}>
+                          <View style={styles.exercisesIconContainer}>
+                            <Ionicons name="barbell" size={18} color="#5E4B8B" />
+                          </View>
+                          <Text style={styles.exercisesTitle}>Ejercicios</Text>
+                        </View>
+                        <Text style={styles.exercisesSubtitle}>
+                          Lista completa de ejercicios en esta rutina
                         </Text>
+                      </View>
+
+                      {isLoadingExercises ? (
+                        <View style={styles.exercisesLoading}>
+                          <ActivityIndicator size="small" color="#5E4B8B" />
+                          <Text style={styles.exercisesLoadingText}>Cargando ejercicios...</Text>
+                        </View>
+                      ) : exercises.length === 0 ? (
+                        <View style={styles.noExercisesContainer}>
+                          <View style={styles.noExercisesIconContainer}>
+                            <Ionicons name="barbell-outline" size={24} color="#8B7AB8" />
+                          </View>
+                          <Text style={styles.noExercisesText}>
+                            Esta rutina no tiene ejercicios configurados
+                          </Text>
+                        </View>
+                      ) : (
+                        <View style={styles.exercisesList}>
+                          {exercises.map((exercise, index) => (
+                            <View key={exercise.id} style={styles.exerciseItem}>
+                              <View style={styles.exerciseNumber}>
+                                <Text style={styles.exerciseNumberText}>{index + 1}</Text>
+                              </View>
+                              
+                              <View style={styles.exerciseContent}>
+                                <View style={styles.exerciseMainInfo}>
+                                  <Text style={styles.exerciseName}>{exercise.exerciseName}</Text>
+                                  <Text style={styles.exerciseMuscle}>{exercise.exerciseMuscle}</Text>
+                                </View>
+                                
+                                <View style={styles.exerciseStats}>
+                                  <View style={styles.exerciseStatItem}>
+                                    <Ionicons name="layers-outline" size={12} color="#5E4B8B" />
+                                    <Text style={styles.exerciseStatText}>
+                                      {exercise.sets?.length || exercise.numberOfSets} series
+                                    </Text>
+                                  </View>
+                                  {exercise.restBetweenSets > 0 && (
+                                    <View style={styles.exerciseStatItem}>
+                                      <Ionicons name="time-outline" size={12} color="#5E4B8B" />
+                                      <Text style={styles.exerciseStatText}>
+                                        {exercise.restBetweenSets}s descanso
+                                      </Text>
+                                    </View>
+                                  )}
+                                </View>
+                              </View>
+                            </View>
+                          ))}
+                          <TouchableOpacity
+                            style={styles.workoutButtonLarge}
+                            onPress={() => startFreeWorkout(routine)}
+                            activeOpacity={0.8}
+                          >
+                            <View style={styles.workoutButtonContent}>
+                              <View style={styles.workoutButtonIconContainer}>
+                                <Ionicons name="play" size={15} color="white" />
+                              </View>
+                              <View style={styles.workoutButtonTextContainer}>
+                                <Text style={styles.workoutButtonTitle}>Entrenar</Text>
+                                <Text style={styles.workoutButtonSubtitle}>Entrenamiento libre</Text>
+                              </View>
+                              <Ionicons name="chevron-forward" size={20} color="white" />
+                            </View>
+                          </TouchableOpacity>
+                        </View>
                       )}
                     </View>
-                  </View>
-                )}
-
-              </TouchableOpacity>
-            ))}
+                  )}
+                </View>
+              );
+            })}
           </View>
         )}
       </ScrollView>
@@ -501,6 +747,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FAFAFA',
+    marginBottom:50
   },
   loadingContainer: {
     flex: 1,
@@ -566,6 +813,43 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
   },
+  infoCard: {
+    backgroundColor: '#FBF9FE',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#EFEDFB',
+  },
+  infoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  infoHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  infoTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#5E4B8B',
+  },
+  closeButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+  },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -615,6 +899,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 16,
     elevation: 8,
+    marginBottom: 32,
   },
   emptyButtonText: {
     color: 'white',
@@ -638,7 +923,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    padding:10
+    padding: 10,
+    marginBottom: 16,
   },
   routineInfo: {
     flex: 1,
@@ -682,7 +968,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   routineActions: {
-    flexDirection:"column",
+    flexDirection: 'column',
     gap: 8,
   },
   actionButton: {
@@ -691,32 +977,161 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  workoutButton: {
+    backgroundColor: '#5E4B8B',
+    shadowColor: '#5E4B8B',
+    shadowOpacity: 0.25,
   },
   editButton: {
     backgroundColor: '#5E4B8B',
+    shadowColor: '#5E4B8B',
+    shadowOpacity: 0.25,
   },
   deleteButton: {
     backgroundColor: '#5E4B8B',
+    shadowColor: '#5E4B8B',
+    shadowOpacity: 0.25,
   },
-  exercisesPreview: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+  expandButton: {
+    backgroundColor: '#5E4B8B',
+    shadowColor: '#5E4B8B',
+    shadowOpacity: 0.2,
   },
-  previewTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 12,
+  workoutButtonLarge: {
+    backgroundColor: '#5E4B8B',
+    borderRadius: 16,
+    marginBottom: 16,
+    shadowColor: '#5E4B8B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  exercisesList: {
-    gap: 8,
-  },
-  exercisePreviewItem: {
+  workoutButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 16,
     gap: 12,
+  },
+  workoutButtonIconContainer: {
+    width: 30,
+    height: 30,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  workoutButtonTextContainer: {
+    flex: 1,
+  },
+  workoutButtonTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: 'white',
+    marginBottom: 2,
+  },
+  workoutButtonSubtitle: {
+    fontSize: 10,
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontWeight: '500',
+  },
+  expandedContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    borderTopWidth: 0.5,
+    borderTopColor: '#E5E7EB',
+    backgroundColor: '#fff',
+  },
+  exercisesHeader: {
+    marginBottom: 16,
+    paddingTop: 16,
+  },
+  exercisesTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  exercisesIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#F8F7FC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 4,
+    shadowColor: '#5E4B8B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  exercisesTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  exercisesSubtitle: {
+    fontSize: 14,
+    color: '#6B5B95',
+    fontWeight: '500',
+  },
+  exercisesLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    gap: 8,
+  },
+  exercisesLoadingText: {
+    fontSize: 14,
+    color: '#6B5B95',
+    fontWeight: '500',
+  },
+  noExercisesContainer: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    gap: 8,
+  },
+  noExercisesIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F8F7FC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  noExercisesText: {
+    fontSize: 14,
+    color: '#8B7AB8',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  exercisesList: {
+    gap: 12,
+  },
+  exerciseItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#5E4B8B',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.02,
+    shadowRadius: 2,
+    elevation: 1,
   },
   exerciseNumber: {
     width: 24,
@@ -725,31 +1140,47 @@ const styles = StyleSheet.create({
     backgroundColor: '#EDE9FE',
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 12,
   },
   exerciseNumberText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#5E4B8B',
   },
-  exercisePreviewInfo: {
+  exerciseContent: {
     flex: 1,
   },
-  exercisePreviewName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
+  exerciseMainInfo: {
+    marginBottom: 8,
+  },
+  exerciseName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2937',
     marginBottom: 2,
   },
-  exercisePreviewSets: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  moreExercises: {
+  exerciseMuscle: {
     fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  exerciseStats: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  exerciseStatItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8F7FC',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 3,
+  },
+  exerciseStatText: {
+    fontSize: 11,
     color: '#5E4B8B',
-    fontStyle: 'italic',
-    marginTop: 4,
-    paddingLeft: 36,
+    fontWeight: '500',
   },
 });
 

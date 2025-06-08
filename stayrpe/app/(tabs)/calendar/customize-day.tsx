@@ -16,10 +16,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-
-// ============================================================================
-// INTERFACES
-// ============================================================================
+import ExercisePickerModal, { Exercise } from '../../../components/ExercisePickerModal';
 
 interface SetInfo {
   setId: number;
@@ -43,6 +40,9 @@ interface SetInfo {
   effectiveRpe?: number;
   effectiveNotes?: string;
   isCustomized: boolean;
+  isAddedSet?: boolean;
+  // Nueva propiedad para series añadidas a ejercicios originales
+  isExtraSet?: boolean;
 }
 
 interface ExerciseCustomization {
@@ -57,6 +57,12 @@ interface ExerciseCustomization {
   sets: SetInfo[];
   hasCustomizedSets: boolean;
   customizedSetsCount: number;
+  isAddedExercise?: boolean;
+  isRemovedExercise?: boolean;
+  isOriginalExercise?: boolean;
+  // Nueva propiedad para contar series eliminadas
+  removedSetsCount?: number;
+  addedSetsCount?: number;
 }
 
 interface DayCustomizationResponse {
@@ -67,6 +73,8 @@ interface DayCustomizationResponse {
   hasCustomizations: boolean;
   totalCustomizations: number;
   exercises: ExerciseCustomization[];
+  removedExercisesCount?: number;
+  addedExercisesCount?: number;
 }
 
 interface SetCustomization {
@@ -79,6 +87,25 @@ interface SetCustomization {
   customNotes?: string;
 }
 
+interface AddedExercise {
+  exerciseId: number;
+  order: number;
+  numberOfSets: number;
+  restBetweenSets?: number;
+  notes?: string;
+  sets: AddedSet[];
+}
+
+interface AddedSet {
+  setNumber: number;
+  targetRepsMin: number;
+  targetRepsMax: number;
+  targetWeight: number;
+  rir?: number;
+  rpe?: number;
+  notes?: string;
+}
+
 interface EditingSet {
   setInfo: SetInfo;
   exerciseIndex: number;
@@ -86,39 +113,24 @@ interface EditingSet {
   exerciseName: string;
 }
 
-// ============================================================================
-// COMPONENTE PRINCIPAL
-// ============================================================================
-
 const CustomizeDayScreen = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
-
-  // ============================================================================
-  // CONSTANTES
-  // ============================================================================
 
   const API_URL = 'http://192.168.0.57:8080';
   const macrocycleId = params.macrocycleId as string;
   const absoluteDay = parseInt(params.absoluteDay as string);
   const routineName = params.routineName as string;
 
-  // ============================================================================
-  // ESTADOS
-  // ============================================================================
-
-  // Estados principales
   const [dayData, setDayData] = useState<DayCustomizationResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Estados para modal de edición
+  // Estados para editar series
   const [editingSet, setEditingSet] = useState<EditingSet | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
-
-  // Estados para formulario de edición
   const [tempRepsMin, setTempRepsMin] = useState('');
   const [tempRepsMax, setTempRepsMax] = useState('');
   const [tempWeight, setTempWeight] = useState('');
@@ -126,14 +138,23 @@ const CustomizeDayScreen = () => {
   const [tempNotes, setTempNotes] = useState('');
   const [intensityType, setIntensityType] = useState<'RIR' | 'RPE'>('RIR');
 
-  // Estado para InfoCard
+  // Estados para añadir ejercicios
+  const [showExercisePickerModal, setShowExercisePickerModal] = useState(false);
+  const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
+  const [selectedExerciseToAdd, setSelectedExerciseToAdd] = useState<Exercise | null>(null);
+  const [addExerciseOrder, setAddExerciseOrder] = useState('');
+  const [addExerciseNotes, setAddExerciseNotes] = useState('');
+  const [addExerciseRestTime, setAddExerciseRestTime] = useState('60');
+  const [addExerciseSets, setAddExerciseSets] = useState<AddedSet[]>([]);
+
+  // Estado para ejercicios eliminados (solo guardamos los IDs)
+  const [removedExerciseIds, setRemovedExerciseIds] = useState<number[]>([]);
+
+  // Nuevos estados para series eliminadas
+  const [removedSetIds, setRemovedSetIds] = useState<number[]>([]);
+
   const [showInfoCard, setShowInfoCard] = useState(true);
 
-  // ============================================================================
-  // EFFECTS
-  // ============================================================================
-
-  // Cargar token
   useEffect(() => {
     const getToken = async () => {
       const storedToken = await AsyncStorage.getItem("token");
@@ -142,7 +163,6 @@ const CustomizeDayScreen = () => {
     getToken();
   }, []);
 
-  // Cargar preferencia de InfoCard
   useEffect(() => {
     const loadInfoCardPreference = async () => {
       try {
@@ -157,7 +177,6 @@ const CustomizeDayScreen = () => {
     loadInfoCardPreference();
   }, []);
 
-  // Cargar datos del día cuando el componente recibe foco
   useFocusEffect(
     React.useCallback(() => {
       if (token && macrocycleId && absoluteDay) {
@@ -165,10 +184,6 @@ const CustomizeDayScreen = () => {
       }
     }, [token, macrocycleId, absoluteDay])
   );
-
-  // ============================================================================
-  // FUNCIONES DE API
-  // ============================================================================
 
   const loadDayData = async () => {
     if (!token) return;
@@ -195,8 +210,10 @@ const CustomizeDayScreen = () => {
       
       if (response.ok) {
         const data = await response.json();
-        console.log('🔥 Datos crudos del backend:', JSON.stringify(data, null, 2));
         setDayData(data);
+        // Reset removed exercises and sets when reloading
+        setRemovedExerciseIds([]);
+        setRemovedSetIds([]);
       } else {
         const errorData = await response.json();
         Alert.alert('Error', errorData.error || 'No se pudo cargar la información del día');
@@ -210,127 +227,445 @@ const CustomizeDayScreen = () => {
     }
   };
 
-  const handleSaveChanges = async () => {
-  if (!dayData || !token) return;
-  
-  try {
-    setSaving(true);
-
-    const setCustomizations: SetCustomization[] = [];
+  const getUsedExerciseIds = (): number[] => {
+    if (!dayData) return [];
     
-    // Debug: Analizar cada ejercicio y serie
-    console.log('🔍 DEBUGGING - Analizando datos antes de enviar:');
-    dayData.exercises.forEach((exercise, exerciseIndex) => {
-      console.log(`\n📝 Ejercicio ${exerciseIndex + 1}: ${exercise.exerciseName}`);
-      exercise.sets.forEach((setInfo, setIndex) => {
-        console.log(`  📊 Serie ${setIndex + 1}:`, {
-          setId: setInfo.setId,
-          isCustomized: setInfo.isCustomized,
-          customRepsMin: setInfo.customRepsMin,
-          customRepsMax: setInfo.customRepsMax,
-          customWeight: setInfo.customWeight,
-          customRir: setInfo.customRir,
-          customRpe: setInfo.customRpe,
-          customNotes: setInfo.customNotes,
-        });
-        
-        // 🔥 INCLUIR TODAS las series para que el backend pueda decidir
-        const customization: SetCustomization = {
-          exerciseSetId: setInfo.setId,
-          customRepsMin: setInfo.customRepsMin,
-          customRepsMax: setInfo.customRepsMax,
-          customWeight: setInfo.customWeight,
-          customRir: setInfo.customRir,
-          customRpe: setInfo.customRpe,
-          customNotes: setInfo.customNotes,
-        };
-        
-        // Validar que los datos obligatorios estén presentes
-        if (!setInfo.setId) {
-          console.error('❌ ERROR: setId es undefined para serie');
-          return;
-        }
-        
-        console.log(`  ✅ Agregando serie (${setInfo.isCustomized ? 'customizada' : 'original'}):`, customization);
-        setCustomizations.push(customization);
-      });
-    });
+    const originalExerciseIds = dayData.exercises
+      .filter(ex => ex.isOriginalExercise !== false)
+      .map(ex => ex.exerciseId);
+    
+    const addedExerciseIds = dayData.exercises
+      .filter(ex => ex.isAddedExercise === true)
+      .map(ex => ex.exerciseId);
+    
+    return [...originalExerciseIds, ...addedExerciseIds];
+  };
 
-    const requestData = {
-      absoluteDay: dayData.absoluteDay,
-      setCustomizations: setCustomizations
-    };
+  const handleAddExercise = () => {
+    setShowExercisePickerModal(true);
+  };
 
-    console.log('\n🚀 DATOS FINALES A ENVIAR:');
-    console.log('Absolute Day:', requestData.absoluteDay);
-    console.log('Número total de series:', setCustomizations.length);
-    console.log('Customizaciones completas:', JSON.stringify(setCustomizations, null, 2));
-
-    const response = await fetch(
-      `${API_URL}/macrocycles/${macrocycleId}/days/${absoluteDay}/customize`,
+  const handleExerciseSelected = (exercise: Exercise) => {
+    setSelectedExerciseToAdd(exercise);
+    setShowExercisePickerModal(false);
+    
+    // Calcular el siguiente orden
+    const maxOrder = dayData?.exercises.reduce((max, ex) => Math.max(max, ex.order), 0) || 0;
+    setAddExerciseOrder((maxOrder + 1).toString());
+    
+    // Configurar series por defecto
+    const defaultSets: AddedSet[] = [
       {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestData)
+        setNumber: 1,
+        targetRepsMin: 8,
+        targetRepsMax: 12,
+        targetWeight: 20,
+        rir: 2,
+        notes: ''
+      },
+      {
+        setNumber: 2,
+        targetRepsMin: 8,
+        targetRepsMax: 12,
+        targetWeight: 20,
+        rir: 2,
+        notes: ''
+      },
+      {
+        setNumber: 3,
+        targetRepsMin: 8,
+        targetRepsMax: 12,
+        targetWeight: 20,
+        rir: 2,
+        notes: ''
       }
-    );
+    ];
+    
+    setAddExerciseSets(defaultSets);
+    setAddExerciseNotes('');
+    setAddExerciseRestTime('60');
+    setShowAddExerciseModal(true);
+  };
 
-    if (response.status === 401) {
-      await AsyncStorage.removeItem("token");
-      await AsyncStorage.removeItem("onboardingComplete");
-      Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
-        { text: "OK", onPress: () => router.replace("/") }
-      ]);
+  const handleSaveAddedExercise = () => {
+    if (!selectedExerciseToAdd || !dayData) return;
+
+    const order = parseInt(addExerciseOrder);
+    if (isNaN(order) || order <= 0) {
+      Alert.alert('Error', 'El orden debe ser un número mayor a 0');
       return;
     }
 
-    if (response.ok) {
-      // 🔥 CAMBIO PRINCIPAL: No recargar inmediatamente, mantener estado local
-      setHasUnsavedChanges(false);
-      
-      // Contar las customizaciones actuales en el estado local
-      const currentCustomizations = dayData.exercises.reduce((total, ex) =>
-        total + ex.sets.filter(s => s.isCustomized).length, 0);
-        
-      console.log('✅ Guardado exitoso. Customizaciones actuales:', currentCustomizations);
-      
-      Alert.alert(
-        'Cambios Guardados',
-        currentCustomizations > 0 
-          ? `Se han guardado los cambios correctamente para ese dia.`
-          : 'Se ha reseteado correctamente.',
-        [{ text: 'Vale' }]
-      );
-      
-      // 🔥 ALTERNATIVA: Recargar con delay para que el usuario vea el resultado
-      setTimeout(() => {
-        console.log('🔄 Recargando datos del servidor para sincronizar...');
-        loadDayData();
-      }, 1500); // 1.5 segundos después de guardar
-    } else {
-      const errorData = await response.json();
-      console.error('❌ ERROR DEL BACKEND:', errorData);
-      console.error('❌ STATUS CODE:', response.status);
-      
-      Alert.alert('Error', errorData.error || 'No se pudieron guardar los cambios');
+    const restTime = parseInt(addExerciseRestTime);
+    if (isNaN(restTime) || restTime < 0) {
+      Alert.alert('Error', 'El tiempo de descanso debe ser un número mayor o igual a 0');
+      return;
     }
-  } catch (error) {
-    console.error('❌ ERROR DE CONEXIÓN:', error);
-    Alert.alert('Error de Conexión', 'No se pudo conectar con el servidor');
-  } finally {
-    setSaving(false);
-  }
-};
-  // ============================================================================
-  // FUNCIONES DE EDICIÓN
-  // ============================================================================
 
+    // Validar series
+    for (const set of addExerciseSets) {
+      if (set.targetRepsMin <= 0 || set.targetRepsMax <= 0 || set.targetRepsMin > set.targetRepsMax) {
+        Alert.alert('Error', 'Las repeticiones deben ser válidas');
+        return;
+      }
+      if (set.targetWeight < 0) {
+        Alert.alert('Error', 'El peso debe ser mayor o igual a 0');
+        return;
+      }
+    }
+
+    // Crear nuevo ejercicio
+    const newExercise: ExerciseCustomization = {
+      routineExerciseId: -Date.now(), // ID temporal negativo
+      exerciseId: selectedExerciseToAdd.id,
+      exerciseName: selectedExerciseToAdd.name,
+      exerciseMuscle: selectedExerciseToAdd.muscle,
+      order: order,
+      numberOfSets: addExerciseSets.length,
+      restBetweenSets: restTime,
+      exerciseNotes: addExerciseNotes.trim() || undefined,
+      sets: addExerciseSets.map(set => ({
+        setId: -Date.now() - set.setNumber, // ID temporal negativo
+        setNumber: set.setNumber,
+        originalRepsMin: set.targetRepsMin,
+        originalRepsMax: set.targetRepsMax,
+        originalWeight: set.targetWeight,
+        originalRir: set.rir,
+        originalRpe: set.rpe,
+        originalNotes: set.notes,
+        effectiveRepsMin: set.targetRepsMin,
+        effectiveRepsMax: set.targetRepsMax,
+        effectiveWeight: set.targetWeight,
+        effectiveRir: set.rir,
+        effectiveRpe: set.rpe,
+        effectiveNotes: set.notes,
+        isCustomized: false,
+        isAddedSet: true
+      })),
+      hasCustomizedSets: false,
+      customizedSetsCount: 0,
+      isAddedExercise: true,
+      isOriginalExercise: false,
+      removedSetsCount: 0,
+      addedSetsCount: 0
+    };
+
+    // Añadir ejercicio a la lista
+    const newDayData = { ...dayData };
+    newDayData.exercises.push(newExercise);
+    
+    // Reordenar ejercicios por orden
+    newDayData.exercises.sort((a, b) => a.order - b.order);
+    
+    // Actualizar contadores
+    newDayData.addedExercisesCount = (newDayData.addedExercisesCount || 0) + 1;
+    newDayData.hasCustomizations = true;
+
+    setDayData(newDayData);
+    setHasUnsavedChanges(true);
+    setShowAddExerciseModal(false);
+    setSelectedExerciseToAdd(null);
+  };
+
+  const handleRemoveExercise = (exercise: ExerciseCustomization) => {
+    if (!dayData) return;
+
+    Alert.alert(
+      'Eliminar Ejercicio',
+      `¿Estás seguro de que quieres eliminar "${exercise.exerciseName}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: () => {
+            if (exercise.isAddedExercise) {
+              // Si es un ejercicio agregado, simplemente lo quitamos de la lista
+              const newDayData = { ...dayData };
+              newDayData.exercises = newDayData.exercises.filter(ex => ex.routineExerciseId !== exercise.routineExerciseId);
+              newDayData.addedExercisesCount = Math.max(0, (newDayData.addedExercisesCount || 0) - 1);
+              setDayData(newDayData);
+            } else {
+              // Si es un ejercicio original, lo marcamos como eliminado
+              setRemovedExerciseIds([...removedExerciseIds, exercise.exerciseId]);
+            }
+            setHasUnsavedChanges(true);
+          }
+        }
+      ]
+    );
+  };
+
+  // Nueva función para añadir serie a un ejercicio existente
+  const handleAddSetToExercise = (exerciseIndex: number) => {
+    if (!dayData) return;
+
+    const newDayData = { ...dayData };
+    const exercise = newDayData.exercises[exerciseIndex];
+    
+    // Calcular el siguiente número de serie
+    const maxSetNumber = exercise.sets.reduce((max, set) => Math.max(max, set.setNumber), 0);
+    const newSetNumber = maxSetNumber + 1;
+
+    // Usar los valores de la última serie como referencia
+    const lastSet = exercise.sets[exercise.sets.length - 1];
+    
+    const newSet: SetInfo = {
+      setId: -Date.now() - newSetNumber, // ID temporal negativo
+      setNumber: newSetNumber,
+      originalRepsMin: lastSet.effectiveRepsMin,
+      originalRepsMax: lastSet.effectiveRepsMax,
+      originalWeight: lastSet.effectiveWeight,
+      originalRir: lastSet.effectiveRir,
+      originalRpe: lastSet.effectiveRpe,
+      originalNotes: '',
+      effectiveRepsMin: lastSet.effectiveRepsMin,
+      effectiveRepsMax: lastSet.effectiveRepsMax,
+      effectiveWeight: lastSet.effectiveWeight,
+      effectiveRir: lastSet.effectiveRir,
+      effectiveRpe: lastSet.effectiveRpe,
+      effectiveNotes: '',
+      isCustomized: false,
+      isExtraSet: true // Nueva serie añadida a ejercicio original
+    };
+
+    exercise.sets.push(newSet);
+    exercise.numberOfSets = exercise.sets.filter(set => !removedSetIds.includes(set.setId)).length;
+    exercise.addedSetsCount = (exercise.addedSetsCount || 0) + 1;
+
+    setDayData(newDayData);
+    setHasUnsavedChanges(true);
+  };
+
+  // Nueva función para eliminar serie de un ejercicio
+  const handleRemoveSetFromExercise = (exerciseIndex: number, setIndex: number) => {
+    if (!dayData) return;
+
+    const exercise = dayData.exercises[exerciseIndex];
+    const setToRemove = exercise.sets[setIndex];
+
+    // No permitir eliminar si solo queda una serie
+    const visibleSets = exercise.sets.filter(set => !removedSetIds.includes(set.setId));
+    if (visibleSets.length <= 1) {
+      Alert.alert('Error', 'Un ejercicio debe tener al menos una serie');
+      return;
+    }
+
+    Alert.alert(
+      'Eliminar Serie',
+      `¿Estás seguro de que quieres eliminar la serie ${setToRemove.setNumber}?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: () => {
+            if (setToRemove.isAddedSet || setToRemove.isExtraSet) {
+              // Si es una serie agregada, la quitamos de la lista
+              const newDayData = { ...dayData };
+              const exercise = newDayData.exercises[exerciseIndex];
+              exercise.sets = exercise.sets.filter((_, index) => index !== setIndex);
+              
+              // Renumerar las series
+              exercise.sets.forEach((set, index) => {
+                set.setNumber = index + 1;
+              });
+              
+              exercise.numberOfSets = exercise.sets.length;
+              exercise.addedSetsCount = Math.max(0, (exercise.addedSetsCount || 0) - 1);
+              
+              setDayData(newDayData);
+            } else {
+              // Si es una serie original, la marcamos como eliminada
+              setRemovedSetIds([...removedSetIds, setToRemove.setId]);
+              
+              const newDayData = { ...dayData };
+              const exercise = newDayData.exercises[exerciseIndex];
+              exercise.numberOfSets = exercise.sets.filter(set => !removedSetIds.includes(set.setId) && set.setId !== setToRemove.setId).length;
+              exercise.removedSetsCount = (exercise.removedSetsCount || 0) + 1;
+              
+              setDayData(newDayData);
+            }
+            setHasUnsavedChanges(true);
+          }
+        }
+      ]
+    );
+  };
+
+  const updateAddedExerciseSet = (setIndex: number, field: keyof AddedSet, value: any) => {
+    const newSets = [...addExerciseSets];
+    newSets[setIndex] = { ...newSets[setIndex], [field]: value };
+    setAddExerciseSets(newSets);
+  };
+
+  const addSetToNewExercise = () => {
+    const newSet: AddedSet = {
+      setNumber: addExerciseSets.length + 1,
+      targetRepsMin: 8,
+      targetRepsMax: 12,
+      targetWeight: 20,
+      rir: 2,
+      notes: ''
+    };
+    setAddExerciseSets([...addExerciseSets, newSet]);
+  };
+
+  const removeSetFromNewExercise = (setIndex: number) => {
+    if (addExerciseSets.length <= 1) return;
+    
+    const newSets = addExerciseSets.filter((_, index) => index !== setIndex);
+    // Renumerar las series
+    const renumberedSets = newSets.map((set, index) => ({
+      ...set,
+      setNumber: index + 1
+    }));
+    setAddExerciseSets(renumberedSets);
+  };
+
+  const handleSaveChanges = async () => {
+    if (!dayData || !token) return;
+    
+    try {
+      setSaving(true);
+
+      // Obtener customizaciones de series (excluyendo las eliminadas y las que son de ejercicios agregados)
+      const setCustomizations: SetCustomization[] = [];
+      
+      dayData.exercises.forEach((exercise) => {
+        if (!exercise.isAddedExercise) {
+          exercise.sets.forEach((setInfo) => {
+            if (!setInfo.isAddedSet && !setInfo.isExtraSet && !removedSetIds.includes(setInfo.setId)) {
+              const customization: SetCustomization = {
+                exerciseSetId: setInfo.setId,
+                customRepsMin: setInfo.customRepsMin,
+                customRepsMax: setInfo.customRepsMax,
+                customWeight: setInfo.customWeight,
+                customRir: setInfo.customRir,
+                customRpe: setInfo.customRpe,
+                customNotes: setInfo.customNotes,
+              };
+              
+              if (!setInfo.setId || setInfo.setId < 0) {
+                console.warn('⚠️ WARNING: setId es inválido para serie original');
+                return;
+              }
+              
+              setCustomizations.push(customization);
+            }
+          });
+        }
+      });
+
+      // Obtener ejercicios agregados (incluyendo series extra añadidas a ejercicios originales)
+      const addedExercises: AddedExercise[] = [];
+      
+      // Ejercicios completamente nuevos
+      const newExercises = dayData.exercises
+        .filter(ex => ex.isAddedExercise)
+        .map(ex => ({
+          exerciseId: ex.exerciseId,
+          order: ex.order,
+          numberOfSets: ex.numberOfSets,
+          restBetweenSets: ex.restBetweenSets,
+          notes: ex.exerciseNotes,
+          sets: ex.sets.map(set => ({
+            setNumber: set.setNumber,
+            targetRepsMin: set.originalRepsMin,
+            targetRepsMax: set.originalRepsMax,
+            targetWeight: set.originalWeight,
+            rir: set.originalRir,
+            rpe: set.originalRpe,
+            notes: set.originalNotes
+          }))
+        }));
+
+      addedExercises.push(...newExercises);
+
+      // Series extra añadidas a ejercicios originales
+      dayData.exercises.forEach(exercise => {
+        if (!exercise.isAddedExercise) {
+          const extraSets = exercise.sets.filter(set => set.isExtraSet);
+          if (extraSets.length > 0) {
+            addedExercises.push({
+              exerciseId: exercise.exerciseId,
+              order: exercise.order,
+              numberOfSets: extraSets.length,
+              restBetweenSets: exercise.restBetweenSets,
+              notes: `Series adicionales para ${exercise.exerciseName}`,
+              sets: extraSets.map(set => ({
+                setNumber: set.setNumber,
+                targetRepsMin: set.originalRepsMin,
+                targetRepsMax: set.originalRepsMax,
+                targetWeight: set.originalWeight,
+                rir: set.originalRir,
+                rpe: set.originalRpe,
+                notes: set.originalNotes
+              }))
+            });
+          }
+        }
+      });
+
+      const requestData = {
+        absoluteDay: dayData.absoluteDay,
+        setCustomizations: setCustomizations,
+        addedExercises: addedExercises,
+        removedExerciseIds: removedExerciseIds,
+        removedSetIds: removedSetIds // Nuevo campo para series eliminadas
+      };
+
+      console.log('🚀 Enviando datos:', requestData);
+
+      const response = await fetch(
+        `${API_URL}/macrocycles/${macrocycleId}/days/${absoluteDay}/customize`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestData)
+        }
+      );
+
+      if (response.status === 401) {
+        await AsyncStorage.removeItem("token");
+        await AsyncStorage.removeItem("onboardingComplete");
+        Alert.alert("Sesión Expirada", "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.", [
+          { text: "OK", onPress: () => router.replace("/") }
+        ]);
+        return;
+      }
+
+      if (response.ok) {
+        setHasUnsavedChanges(false);
+        setRemovedExerciseIds([]);
+        setRemovedSetIds([]);
+        
+        Alert.alert(
+          'Cambios Guardados',
+          'Se han guardado todos los cambios correctamente.',
+          [{ text: 'Vale' }]
+        );
+        
+        setTimeout(() => {
+          loadDayData();
+        }, 1500);
+      } else {
+        const errorData = await response.json();
+        Alert.alert('Error', errorData.error || 'No se pudieron guardar los cambios');
+      }
+    } catch (error) {
+      console.error('Error guardando cambios:', error);
+      Alert.alert('Error de Conexión', 'No se pudo conectar con el servidor');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Resto de funciones existentes (handleEditSet, handleSaveSetEdit, etc.)
   const handleEditSet = (setInfo: SetInfo, exerciseIndex: number, setIndex: number, exerciseName: string) => {
-    console.log("🧩 setInfo recibido en handleEditSet:", setInfo);
-
     setEditingSet({ setInfo, exerciseIndex, setIndex, exerciseName });
 
     setTempRepsMin(setInfo.effectiveRepsMin?.toString() || '');
@@ -361,7 +696,6 @@ const CustomizeDayScreen = () => {
     const weight = parseFloat(tempWeight);
     const intensity = parseInt(tempIntensity);
 
-    // Validaciones
     if (isNaN(repsMin) || repsMin <= 0) {
       Alert.alert('Error', 'Las repeticiones mínimas deben ser un número mayor a 0');
       return;
@@ -391,7 +725,6 @@ const CustomizeDayScreen = () => {
       return;
     }
 
-    // Actualizar datos
     const newDayData = JSON.parse(JSON.stringify(dayData));
     const exercise = newDayData.exercises[exerciseIndex];
     const setInfo = exercise.sets[setIndex];
@@ -439,18 +772,12 @@ const CustomizeDayScreen = () => {
     setEditingSet(null);
   };
 
-  // ============================================================================
-  // FUNCIONES DE RESET
-  // ============================================================================
-
-  
-
   const handleResetAllCustomizations = () => {
-    if (!dayData || !dayData.hasCustomizations) return;
+    if (!dayData || (!dayData.hasCustomizations && removedExerciseIds.length === 0 && removedSetIds.length === 0)) return;
     
     Alert.alert(
       'Resetear Todo',
-      `¿Estás seguro de que quieres resetear la rutina con los valores prederminados apar ese dia?`,
+      '¿Estás seguro de que quieres resetear todas las customizaciones, ejercicios y series agregadas/eliminadas?',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -459,39 +786,50 @@ const CustomizeDayScreen = () => {
           onPress: () => {
             const newDayData = JSON.parse(JSON.stringify(dayData));
             
+            // Resetear series customizadas
             newDayData.exercises.forEach(exercise => {
-              exercise.sets.forEach(setInfo => {
-                setInfo.customRepsMin = undefined;
-                setInfo.customRepsMax = undefined;
-                setInfo.customWeight = undefined;
-                setInfo.customRir = undefined;
-                setInfo.customRpe = undefined;
-                setInfo.customNotes = undefined;
-                setInfo.effectiveRepsMin = setInfo.originalRepsMin;
-                setInfo.effectiveRepsMax = setInfo.originalRepsMax;
-                setInfo.effectiveWeight = setInfo.originalWeight;
-                setInfo.effectiveRir = setInfo.originalRir;
-                setInfo.effectiveRpe = setInfo.originalRpe;
-                setInfo.effectiveNotes = setInfo.originalNotes;
-                setInfo.isCustomized = false;
-              });
-              exercise.customizedSetsCount = 0;
-              exercise.hasCustomizedSets = false;
+              if (!exercise.isAddedExercise) {
+                exercise.sets = exercise.sets.filter(set => !set.isExtraSet);
+                exercise.sets.forEach(setInfo => {
+                  setInfo.customRepsMin = undefined;
+                  setInfo.customRepsMax = undefined;
+                  setInfo.customWeight = undefined;
+                  setInfo.customRir = undefined;
+                  setInfo.customRpe = undefined;
+                  setInfo.customNotes = undefined;
+                  setInfo.effectiveRepsMin = setInfo.originalRepsMin;
+                  setInfo.effectiveRepsMax = setInfo.originalRepsMax;
+                  setInfo.effectiveWeight = setInfo.originalWeight;
+                  setInfo.effectiveRir = setInfo.originalRir;
+                  setInfo.effectiveRpe = setInfo.originalRpe;
+                  setInfo.effectiveNotes = setInfo.originalNotes;
+                  setInfo.isCustomized = false;
+                });
+                exercise.customizedSetsCount = 0;
+                exercise.hasCustomizedSets = false;
+                exercise.removedSetsCount = 0;
+                exercise.addedSetsCount = 0;
+              }
             });
             
+            // Eliminar ejercicios agregados
+            newDayData.exercises = newDayData.exercises.filter(ex => !ex.isAddedExercise);
+            
+            // Reset contadores
             newDayData.totalCustomizations = 0;
             newDayData.hasCustomizations = false;
+            newDayData.addedExercisesCount = 0;
+            newDayData.removedExercisesCount = 0;
+            
             setDayData(newDayData);
+            setRemovedExerciseIds([]);
+            setRemovedSetIds([]);
             setHasUnsavedChanges(true);
           }
         }
       ]
     );
   };
-
-  // ============================================================================
-  // FUNCIONES DE NAVEGACIÓN Y UTILIDADES
-  // ============================================================================
 
   const handleBackPress = () => {
     if (hasUnsavedChanges) {
@@ -514,7 +852,7 @@ const CustomizeDayScreen = () => {
       setShowInfoCard(false);
     } catch (error) {
       console.log('Error saving info card preference:', error);
-      setShowInfoCard(false); // Cerrar de todas formas
+      setShowInfoCard(false);
     }
   };
 
@@ -550,17 +888,38 @@ const CustomizeDayScreen = () => {
     return null;
   };
 
-  // ============================================================================
-  // COMPONENTES DE RENDERIZADO
-  // ============================================================================
-
-  const renderSetCard = (setInfo: SetInfo, exerciseIndex: number, setIndex: number, exerciseName: string) => {
+  const renderSetCard = (setInfo: SetInfo, exerciseIndex: number, setIndex: number, exerciseName: string, exercise: ExerciseCustomization) => {
     const intensityLabel = getIntensityLabel(setInfo);
     
-    // Calcular isCustomized localmente si viene undefined
     const isActuallyCustomized = setInfo.isCustomized !== undefined 
       ? setInfo.isCustomized 
       : !!(setInfo.customRepsMin || setInfo.customRepsMax || setInfo.customWeight || setInfo.customRir || setInfo.customRpe || setInfo.customNotes);
+    
+    const isSetRemoved = removedSetIds.includes(setInfo.setId);
+    
+    if (isSetRemoved) {
+      return (
+        <View key={setInfo.setId} style={[styles.setCard, styles.setCardRemoved]}>
+          <View style={styles.setHeader}>
+            <View style={styles.setNumberContainer}>
+              <Text style={[styles.setNumber, styles.setNumberRemoved]}>Serie {setInfo.setNumber}</Text>
+              <View style={styles.removedBadge}>
+                <Text style={styles.removedBadgeText}>Eliminada</Text>
+              </View>
+            </View>
+          </View>
+          <View style={styles.setContent}>
+            <Text style={[styles.setDescription, styles.setDescriptionRemoved]}>
+              {setInfo.effectiveRepsMin === setInfo.effectiveRepsMax
+                ? `${setInfo.effectiveRepsMin} reps`
+                : `${setInfo.effectiveRepsMin}-${setInfo.effectiveRepsMax} reps`
+              } × {setInfo.effectiveWeight}kg
+              {intensityLabel && ` (${intensityLabel})`}
+            </Text>
+          </View>
+        </View>
+      );
+    }
     
     return (
       <View key={setInfo.setId} style={styles.setCard}>
@@ -572,6 +931,16 @@ const CustomizeDayScreen = () => {
                 <Text style={styles.editedBadgeText}>Editada</Text>
               </View>
             )}
+            {setInfo.isAddedSet && (
+              <View style={styles.addedBadge}>
+                <Text style={styles.addedBadgeText}>Nueva</Text>
+              </View>
+            )}
+            {setInfo.isExtraSet && (
+              <View style={styles.extraBadge}>
+                <Text style={styles.extraBadgeText}>Extra</Text>
+              </View>
+            )}
           </View>
           <View style={styles.setActions}>
             <TouchableOpacity
@@ -581,6 +950,13 @@ const CustomizeDayScreen = () => {
             >
               <Ionicons name="pencil" size={16} color="#5E4B8B" />
               <Text style={styles.editButtonText}>Editar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.removeSetButton}
+              onPress={() => handleRemoveSetFromExercise(exerciseIndex, setIndex)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="trash-outline" size={16} color="#EF4444" />
             </TouchableOpacity>
           </View>
         </View>
@@ -604,26 +980,68 @@ const CustomizeDayScreen = () => {
   };
 
   const renderExerciseCard = (exercise: ExerciseCustomization, exerciseIndex: number) => {
+    const isRemoved = removedExerciseIds.includes(exercise.exerciseId);
+    const visibleSets = exercise.sets.filter(set => !removedSetIds.includes(set.setId));
+    
     return (
-      <View key={exercise.routineExerciseId} style={styles.exerciseCard}>
+      <View key={exercise.routineExerciseId} style={[
+        styles.exerciseCard,
+        isRemoved && styles.exerciseCardRemoved
+      ]}>
         <View style={styles.exerciseHeader}>
           <View style={styles.exerciseNumberContainer}>
             <Text style={styles.exerciseNumber}>{exercise.order}</Text>
           </View>
           <View style={styles.exerciseInfo}>
-            <Text style={styles.exerciseName}>{exercise.exerciseName}</Text>
+            <View style={styles.exerciseNameRow}>
+              <Text style={[
+                styles.exerciseName,
+                isRemoved && styles.exerciseNameRemoved
+              ]}>
+                {exercise.exerciseName}
+              </Text>
+              <View style={styles.exerciseActions}>
+                <TouchableOpacity
+                  style={styles.removeExerciseButton}
+                  onPress={() => handleRemoveExercise(exercise)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+            </View>
             <View style={styles.exerciseMeta}>
               <View style={styles.muscleChip}>
                 <Text style={styles.muscleText}>{exercise.exerciseMuscle}</Text>
               </View>
               <Text style={styles.setsCount}>
-                {exercise.numberOfSets} series
+                {visibleSets.length} series
               </Text>
               {exercise.hasCustomizedSets && (
                 <View style={styles.customizedSetsIndicator}>
                   <Text style={styles.customizedSetsText}>
                     {exercise.customizedSetsCount} editada{exercise.customizedSetsCount !== 1 ? 's' : ''}
                   </Text>
+                </View>
+              )}
+              {exercise.isAddedExercise && (
+                <View style={styles.addedExerciseIndicator}>
+                  <Text style={styles.addedExerciseText}>Agregado</Text>
+                </View>
+              )}
+              {exercise.addedSetsCount > 0 && (
+                <View style={styles.addedSetsIndicator}>
+                  <Text style={styles.addedSetsText}>+{exercise.addedSetsCount} series</Text>
+                </View>
+              )}
+              {exercise.removedSetsCount > 0 && (
+                <View style={styles.removedSetsIndicator}>
+                  <Text style={styles.removedSetsText}>-{exercise.removedSetsCount} series</Text>
+                </View>
+              )}
+              {isRemoved && (
+                <View style={styles.removedExerciseIndicator}>
+                  <Text style={styles.removedExerciseText}>Eliminado</Text>
                 </View>
               )}
             </View>
@@ -637,12 +1055,216 @@ const CustomizeDayScreen = () => {
           </View>
         )}
         
-        <View style={styles.setsContainer}>
-          {exercise.sets.map((setInfo, setIndex) =>
-            renderSetCard(setInfo, exerciseIndex, setIndex, exercise.exerciseName)
-          )}
-        </View>
+        {!isRemoved && (
+          <>
+            <View style={styles.setsContainer}>
+              {exercise.sets.map((setInfo, setIndex) =>
+                renderSetCard(setInfo, exerciseIndex, setIndex, exercise.exerciseName, exercise)
+              )}
+            </View>
+            
+            <TouchableOpacity
+              style={styles.addSetButton}
+              onPress={() => handleAddSetToExercise(exerciseIndex)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.addSetIcon}>
+                <Ionicons name="add-circle" size={20} color="#5E4B8B" />
+              </View>
+              <Text style={styles.addSetText}>Añadir serie</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
+    );
+  };
+
+  const renderAddExerciseModal = () => {
+    if (!selectedExerciseToAdd) return null;
+
+    return (
+      <Modal
+        visible={showAddExerciseModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowAddExerciseModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <View style={styles.modalTitleContainer}>
+                  <Text style={styles.modalTitle}>Añadir Ejercicio</Text>
+                  <Text style={styles.modalSubtitle}>{selectedExerciseToAdd.name}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.modalCloseButton}
+                  onPress={() => setShowAddExerciseModal(false)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close" size={24} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                <View style={styles.inputSection}>
+                  <Text style={styles.sectionTitle}>Posición en la rutina</Text>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Orden de ejecución</Text>
+                    <TextInput
+                      style={styles.numberInput}
+                      value={addExerciseOrder}
+                      onChangeText={setAddExerciseOrder}
+                      placeholder="1"
+                      placeholderTextColor="#9CA3AF"
+                      keyboardType="number-pad"
+                      selectTextOnFocus={true}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputSection}>
+                  <Text style={styles.sectionTitle}>Tiempo de descanso</Text>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Segundos entre series</Text>
+                    <TextInput
+                      style={styles.numberInput}
+                      value={addExerciseRestTime}
+                      onChangeText={setAddExerciseRestTime}
+                      placeholder="60"
+                      placeholderTextColor="#9CA3AF"
+                      keyboardType="number-pad"
+                      selectTextOnFocus={true}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputSection}>
+                  <Text style={styles.sectionTitle}>Notas del ejercicio (opcional)</Text>
+                  <View style={styles.inputGroup}>
+                    <TextInput
+                      style={styles.textAreaInput}
+                      value={addExerciseNotes}
+                      onChangeText={setAddExerciseNotes}
+                      placeholder="Ej: Técnica específica, variación del ejercicio..."
+                      placeholderTextColor="#9CA3AF"
+                      multiline={true}
+                      numberOfLines={3}
+                      textAlignVertical="top"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputSection}>
+                  <View style={styles.setsHeaderRow}>
+                    <Text style={styles.sectionTitle}>Series ({addExerciseSets.length})</Text>
+                    <TouchableOpacity
+                      style={styles.addSetButtonInModal}
+                      onPress={addSetToNewExercise}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="add-circle" size={20} color="#5E4B8B" />
+                      <Text style={styles.addSetButtonTextInModal}>Añadir Serie</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {addExerciseSets.map((set, index) => (
+                    <View key={index} style={styles.setConfigCard}>
+                      <View style={styles.setConfigHeader}>
+                        <Text style={styles.setConfigTitle}>Serie {set.setNumber}</Text>
+                        {addExerciseSets.length > 1 && (
+                          <TouchableOpacity
+                            style={styles.removeSetButtonInModal}
+                            onPress={() => removeSetFromNewExercise(index)}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      <View style={styles.setConfigRow}>
+                        <View style={styles.setConfigInputGroup}>
+                          <Text style={styles.setConfigLabel}>Reps Min</Text>
+                          <TextInput
+                            style={styles.setConfigInput}
+                            value={set.targetRepsMin.toString()}
+                            onChangeText={(text) => updateAddedExerciseSet(index, 'targetRepsMin', parseInt(text) || 0)}
+                            keyboardType="number-pad"
+                            selectTextOnFocus={true}
+                          />
+                        </View>
+                        <View style={styles.setConfigInputGroup}>
+                          <Text style={styles.setConfigLabel}>Reps Max</Text>
+                          <TextInput
+                            style={styles.setConfigInput}
+                            value={set.targetRepsMax.toString()}
+                            onChangeText={(text) => updateAddedExerciseSet(index, 'targetRepsMax', parseInt(text) || 0)}
+                            keyboardType="number-pad"
+                            selectTextOnFocus={true}
+                          />
+                        </View>
+                        <View style={styles.setConfigInputGroup}>
+                          <Text style={styles.setConfigLabel}>Peso (kg)</Text>
+                          <TextInput
+                            style={styles.setConfigInput}
+                            value={set.targetWeight.toString()}
+                            onChangeText={(text) => updateAddedExerciseSet(index, 'targetWeight', parseFloat(text) || 0)}
+                            keyboardType="numeric"
+                            selectTextOnFocus={true}
+                          />
+                        </View>
+                        <View style={styles.setConfigInputGroup}>
+                          <Text style={styles.setConfigLabel}>RIR</Text>
+                          <TextInput
+                            style={styles.setConfigInput}
+                            value={set.rir?.toString() || ''}
+                            onChangeText={(text) => updateAddedExerciseSet(index, 'rir', parseInt(text) || undefined)}
+                            keyboardType="number-pad"
+                            selectTextOnFocus={true}
+                            placeholder="2"
+                          />
+                        </View>
+                      </View>
+
+                      <View style={styles.setConfigNotesRow}>
+                        <TextInput
+                          style={styles.setConfigNotesInput}
+                          value={set.notes || ''}
+                          onChangeText={(text) => updateAddedExerciseSet(index, 'notes', text)}
+                          placeholder="Notas de la serie (opcional)"
+                          placeholderTextColor="#9CA3AF"
+                        />
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => setShowAddExerciseModal(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.cancelButtonText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.saveButton}
+                  onPress={handleSaveAddedExercise}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="checkmark" size={20} color="white" />
+                  <Text style={styles.saveButtonText}>Añadir</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
+      </Modal>
     );
   };
 
@@ -666,7 +1288,6 @@ const CustomizeDayScreen = () => {
         >
           <SafeAreaView style={styles.modalContainer}>
             <View style={styles.modalContent}>
-              {/* Header del modal */}
               <View style={styles.modalHeader}>
                 <View style={styles.modalTitleContainer}>
                   <Text style={styles.modalTitle}>Editar Serie {setInfo.setNumber}</Text>
@@ -681,9 +1302,7 @@ const CustomizeDayScreen = () => {
                 </TouchableOpacity>
               </View>
               
-              {/* Cuerpo del modal */}
               <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                {/* Valores originales */}
                 <View style={styles.originalComparisonCard}>
                   <Text style={styles.originalComparisonTitle}>Valores originales:</Text>
                   <Text style={styles.originalComparisonText}>
@@ -696,7 +1315,6 @@ const CustomizeDayScreen = () => {
                   </Text>
                 </View>
                 
-                {/* Repeticiones */}
                 <View style={styles.inputSection}>
                   <Text style={styles.sectionTitle}>Repeticiones</Text>
                   <View style={styles.inputRow}>
@@ -727,7 +1345,6 @@ const CustomizeDayScreen = () => {
                   </View>
                 </View>
                 
-                {/* Peso */}
                 <View style={styles.inputSection}>
                   <Text style={styles.sectionTitle}>Peso</Text>
                   <View style={styles.inputGroup}>
@@ -744,7 +1361,6 @@ const CustomizeDayScreen = () => {
                   </View>
                 </View>
                 
-                {/* Intensidad */}
                 {(setInfo.originalRir !== undefined || setInfo.originalRpe !== undefined) && (
                   <View style={styles.inputSection}>
                     <Text style={styles.sectionTitle}>Intensidad</Text>
@@ -815,7 +1431,6 @@ const CustomizeDayScreen = () => {
                   </View>
                 )}
                 
-                {/* Notas */}
                 <View style={styles.inputSection}>
                   <Text style={styles.sectionTitle}>Notas (opcional)</Text>
                   <View style={styles.inputGroup}>
@@ -833,7 +1448,6 @@ const CustomizeDayScreen = () => {
                   </View>
                 </View>
                 
-                {/* Vista previa */}
                 <View style={styles.previewCard}>
                   <Text style={styles.previewTitle}>Vista previa:</Text>
                   <Text style={styles.previewText}>
@@ -851,7 +1465,6 @@ const CustomizeDayScreen = () => {
                 </View>
               </ScrollView>
               
-              {/* Acciones del modal */}
               <View style={styles.modalActions}>
                 <TouchableOpacity
                   style={styles.cancelButton}
@@ -876,11 +1489,6 @@ const CustomizeDayScreen = () => {
     );
   };
 
-  // ============================================================================
-  // RENDERIZADO PRINCIPAL
-  // ============================================================================
-
-  // Estados de carga y error
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -907,10 +1515,23 @@ const CustomizeDayScreen = () => {
     );
   }
 
-  // Renderizado principal
+  // Filtrar ejercicios eliminados para mostrar
+  const visibleExercises = dayData.exercises.filter(ex => 
+    !removedExerciseIds.includes(ex.exerciseId) || ex.isAddedExercise
+  );
+
+  const totalExercises = visibleExercises.length;
+  const totalSets = visibleExercises.reduce((total, ex) => {
+    const visibleSetsInExercise = ex.sets.filter(set => !removedSetIds.includes(set.setId));
+    return total + visibleSetsInExercise.length;
+  }, 0);
+  const totalCustomizations = dayData.totalCustomizations || 0;
+  const hasAnyChanges = hasUnsavedChanges || totalCustomizations > 0 || 
+                       dayData.addedExercisesCount > 0 || removedExerciseIds.length > 0 ||
+                       removedSetIds.length > 0;
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* ===== HEADER ===== */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity
@@ -938,7 +1559,6 @@ const CustomizeDayScreen = () => {
         </View>
       </View>
 
-      {/* ===== TARJETA DE ESTADÍSTICAS ===== */}
       <View style={styles.statsCard}>
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
@@ -946,41 +1566,51 @@ const CustomizeDayScreen = () => {
               <Ionicons name="barbell" size={18} color="#5E4B8B" />
             </View>
             <Text style={styles.statLabel}>Ejercicios</Text>
-            <Text style={styles.statValue}>{dayData.exercises.length}</Text>
+            <Text style={styles.statValue}>{totalExercises}</Text>
           </View>
           <View style={styles.statItem}>
             <View style={styles.statIconContainer}>
               <Ionicons name="layers" size={18} color="#5E4B8B" />
             </View>
             <Text style={styles.statLabel}>Series totales</Text>
-            <Text style={styles.statValue}>
-              {dayData.exercises.reduce((total, ex) => total + ex.numberOfSets, 0)}
-            </Text>
+            <Text style={styles.statValue}>{totalSets}</Text>
           </View>
           <View style={styles.statItem}>
             <View style={styles.statIconContainer}>
               <Ionicons name="pencil" size={18} color="#5E4B8B" />
             </View>
             <Text style={styles.statLabel}>Editadas</Text>
-            <Text style={styles.statValue}>
-              {dayData.totalCustomizations}
-            </Text>
+            <Text style={styles.statValue}>{totalCustomizations}</Text>
           </View>
         </View>
       </View>
 
-      {/* ===== CONTENIDO PRINCIPAL ===== */}
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Lista de ejercicios */}
         {dayData.exercises.map((exercise, exerciseIndex) =>
           renderExerciseCard(exercise, exerciseIndex)
         )}
 
-        {/* Tarjeta de información dismissible */}
+        <TouchableOpacity
+          style={styles.addExerciseButton}
+          onPress={handleAddExercise}
+          activeOpacity={0.7}
+        >
+          <View style={styles.addExerciseIcon}>
+            <Ionicons name="add-circle" size={24} color="#5E4B8B" />
+          </View>
+          <View style={styles.addExerciseContent}>
+            <Text style={styles.addExerciseText}>Añadir ejercicio</Text>
+            <Text style={styles.addExerciseSubtext}>
+              Agrega un ejercicio adicional a este día
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#5E4B8B" />
+        </TouchableOpacity>
+
         {showInfoCard && (
           <View style={styles.infoCard}>
             <View style={styles.infoHeader}>
@@ -990,8 +1620,10 @@ const CustomizeDayScreen = () => {
             <View style={styles.infoContent}>
               <Text style={styles.infoText}>
                 • Modifica solo las series que necesites ajustar{'\n'}
+                • Añade o elimina ejercicios según tus necesidades{'\n'}
+                • Añade o elimina series individuales de cada ejercicio{'\n'}
                 • Los cambios solo afectan a este día específico{'\n'}
-                • Puedes resetear series individuales o todo el día{'\n'}
+                • Puedes resetear todo o ejercicios individuales{'\n'}
                 • Los valores originales de la rutina no se modifican
               </Text>
               <TouchableOpacity
@@ -1005,9 +1637,8 @@ const CustomizeDayScreen = () => {
           </View>
         )}
 
-        {/* Botones de acción */}
         <View style={styles.actionButtonsInline}>
-          {dayData.hasCustomizations && (
+          {hasAnyChanges && (
             <TouchableOpacity
               style={styles.resetAllButton}
               onPress={handleResetAllCustomizations}
@@ -1037,24 +1668,26 @@ const CustomizeDayScreen = () => {
         </View>
       </ScrollView>
 
-      {/* ===== MODAL DE EDICIÓN ===== */}
+      <ExercisePickerModal
+        visible={showExercisePickerModal}
+        onClose={() => setShowExercisePickerModal(false)}
+        onExerciseSelected={handleExerciseSelected}
+        excludedExerciseIds={getUsedExerciseIds()}
+        title="Añadir Ejercicio"
+        subtitle="Selecciona un ejercicio para añadir al día"
+      />
+
+      {renderAddExerciseModal()}
       {renderEditModal()}
     </SafeAreaView>
   );
 };
 
-// ============================================================================
-// ESTILOS
-// ============================================================================
-
 const styles = StyleSheet.create({
-  // ===== CONTENEDOR PRINCIPAL =====
   container: {
     flex: 1,
     backgroundColor: '#FAFAFA',
   },
-
-  // ===== ESTADOS DE CARGA Y ERROR =====
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -1096,8 +1729,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-
-  // ===== HEADER =====
   header: {
     backgroundColor: 'white',
     paddingTop: 20,
@@ -1143,8 +1774,6 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: '#5E4B8B',
   },
-
-  // ===== TARJETA DE ESTADÍSTICAS =====
   statsCard: {
     backgroundColor: 'white',
     marginHorizontal: 20,
@@ -1187,8 +1816,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1F2937',
   },
-
-  // ===== CONTENIDO Y SCROLL =====
   content: {
     flex: 1,
   },
@@ -1196,8 +1823,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
   },
-
-  // ===== TARJETAS DE EJERCICIOS =====
   exerciseCard: {
     backgroundColor: 'white',
     borderRadius: 16,
@@ -1208,6 +1833,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 12,
     elevation: 2,
+  },
+  exerciseCardRemoved: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    opacity: 0.7,
   },
   exerciseHeader: {
     flexDirection: 'row',
@@ -1231,11 +1862,33 @@ const styles = StyleSheet.create({
   exerciseInfo: {
     flex: 1,
   },
+  exerciseNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   exerciseName: {
     fontSize: 18,
     fontWeight: '700',
     color: '#1F2937',
-    marginBottom: 4,
+    flex: 1,
+  },
+  exerciseNameRemoved: {
+    textDecorationLine: 'line-through',
+    color: '#6B7280',
+  },
+  exerciseActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  removeExerciseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FEF2F2',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   exerciseMeta: {
     flexDirection: 'row',
@@ -1273,6 +1926,50 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontWeight: '600',
   },
+  addedExerciseIndicator: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  addedExerciseText: {
+    fontSize: 11,
+    color: '#166534',
+    fontWeight: '600',
+  },
+  addedSetsIndicator: {
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  addedSetsText: {
+    fontSize: 11,
+    color: '#1E40AF',
+    fontWeight: '600',
+  },
+  removedSetsIndicator: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  removedSetsText: {
+    fontSize: 11,
+    color: '#DC2626',
+    fontWeight: '600',
+  },
+  removedExerciseIndicator: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  removedExerciseText: {
+    fontSize: 11,
+    color: '#DC2626',
+    fontWeight: '600',
+  },
   exerciseNotesContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1288,10 +1985,9 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     lineHeight: 20,
   },
-
-  // ===== SERIES =====
   setsContainer: {
     gap: 12,
+    marginBottom: 12,
   },
   setCard: {
     backgroundColor: '#F8FAFC',
@@ -1299,6 +1995,11 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+  },
+  setCardRemoved: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+    opacity: 0.6,
   },
   setHeader: {
     flexDirection: 'row',
@@ -1316,14 +2017,50 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1F2937',
   },
+  setNumberRemoved: {
+    color: '#6B7280',
+    textDecorationLine: 'line-through',
+  },
   editedBadge: {
     backgroundColor: '#5E4B8B',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    marginLeft: 8,
   },
   editedBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'white',
+  },
+  addedBadge: {
+    backgroundColor: '#059669',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  addedBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'white',
+  },
+  extraBadge: {
+    backgroundColor: '#0EA5E9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  extraBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'white',
+  },
+  removedBadge: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  removedBadgeText: {
     fontSize: 10,
     fontWeight: '700',
     color: 'white',
@@ -1348,6 +2085,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#5E4B8B',
   },
+  removeSetButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#FEF2F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   setContent: {
     gap: 12,
   },
@@ -1358,13 +2103,73 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
   },
+  setDescriptionRemoved: {
+    textDecorationLine: 'line-through',
+    color: '#9CA3AF',
+  },
   setNotes: {
     fontSize: 14,
     color: '#6B7280',
     fontStyle: 'italic',
   },
-
-  // ===== TARJETA DE INFORMACIÓN =====
+  addSetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+  },
+  addSetIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#EDE9FE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addSetText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#5E4B8B',
+  },
+  addExerciseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FAFBFC',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    gap: 12,
+  },
+  addExerciseIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#EDE9FE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addExerciseContent: {
+    flex: 1,
+  },
+  addExerciseText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#5E4B8B',
+    marginBottom: 2,
+  },
+  addExerciseSubtext: {
+    fontSize: 14,
+    color: '#8B7AB8',
+    lineHeight: 18,
+  },
   infoCard: {
     backgroundColor: 'white',
     borderRadius: 16,
@@ -1409,8 +2214,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#6B7280',
   },
-
-  // ===== BOTONES DE ACCIÓN =====
   actionButtonsInline: {
     flexDirection: 'row',
     gap: 12,
@@ -1466,8 +2269,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'white',
   },
-
-  // ===== MODAL =====
+  // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -1520,8 +2322,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 16,
   },
-
-  // ===== FORMULARIO DEL MODAL =====
   originalComparisonCard: {
     backgroundColor: '#F8FAFC',
     padding: 16,
@@ -1586,8 +2386,6 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     minHeight: 80,
   },
-
-  // ===== TOGGLE DE INTENSIDAD =====
   intensityToggle: {
     flexDirection: 'row',
     backgroundColor: '#F3F4F6',
@@ -1612,8 +2410,6 @@ const styles = StyleSheet.create({
   intensityButtonTextActive: {
     color: 'white',
   },
-
-  // ===== VISTA PREVIA =====
   previewCard: {
     backgroundColor: '#EDE9FE',
     padding: 16,
@@ -1639,8 +2435,6 @@ const styles = StyleSheet.create({
     color: '#7C3AED',
     fontStyle: 'italic',
   },
-
-  // ===== ACCIONES DEL MODAL =====
   modalActions: {
     flexDirection: 'row',
     padding: 20,
@@ -1677,6 +2471,92 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: 'white',
+  },
+  // Add Exercise Modal styles
+  setsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  addSetButtonInModal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EDE9FE',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  addSetButtonTextInModal: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#5E4B8B',
+  },
+  setConfigCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  setConfigHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  setConfigTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  removeSetButtonInModal: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FEF2F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  setConfigRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  setConfigInputGroup: {
+    flex: 1,
+  },
+  setConfigLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 4,
+  },
+  setConfigInput: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: '#1F2937',
+    textAlign: 'center',
+  },
+  setConfigNotesRow: {
+    marginTop: 8,
+  },
+  setConfigNotesInput: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: '#1F2937',
   },
 });
 

@@ -1,7 +1,3 @@
-
-// ==================== EXPERIENCE LEVEL SCREEN ====================
-// app/onboarding/experience-level.tsx
-
 import { useState } from "react";
 import { 
   StyleSheet, 
@@ -15,6 +11,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Ionicons } from '@expo/vector-icons';
 
 type Experience = "beginner" | "intermediate" | "advanced";
 
@@ -35,17 +32,26 @@ export default function ExperienceLevelScreen() {
     { 
       id: "beginner", 
       label: "Principiante", 
-      description: "Nuevo en el entrenamiento o retomando después de un largo descanso" 
+      description: "Menos de 6 meses de experiencia en entrenamiento estructurado",
+      icon: "school",
+      color: "#10B981",
+      features: ["RPE básico", "Técnica fundamental", "Cargas moderadas"]
     },
     { 
       id: "intermediate", 
       label: "Intermedio", 
-      description: "Entreno regularmente desde hace algunos meses" 
+      description: "6 meses a 2 años de entrenamiento regular y estructurado",
+      icon: "fitness",
+      color: "#F59E0B",
+      features: ["RPE avanzado", "Variaciones técnicas", "Periodización"]
     },
     { 
       id: "advanced", 
       label: "Avanzado", 
-      description: "Entreno constantemente desde hace más de un año" 
+      description: "Más de 2 años de entrenamiento constante y especializado",
+      icon: "trophy",
+      color: "#EF4444",
+      features: ["RPE experto", "Técnicas especializadas", "Auto-regulación"]
     },
   ];
 
@@ -72,8 +78,6 @@ export default function ExperienceLevelScreen() {
         experienceLevel: selectedLevel
       };
       
-      console.log("Enviando datos de perfil:", profileData);
-      
       const response = await fetch("http://192.168.0.57:8080/user/profile", {
         method: "POST",
         headers: {
@@ -86,11 +90,9 @@ export default function ExperienceLevelScreen() {
       const data = await response.json();
       
       if (response.ok) {
-        console.log("Perfil guardado exitosamente:", data);
         await AsyncStorage.setItem("onboardingComplete", "true");
-        router.replace("/(tabs)/profile");
+        router.replace("/(tabs)/calendar");
       } else {
-        console.error("Error al guardar perfil:", data);
         Alert.alert("Error", data.error || "Hubo un problema al guardar tu perfil. Inténtalo de nuevo.");
       }
     } catch (error) {
@@ -105,152 +107,233 @@ export default function ExperienceLevelScreen() {
   };
 
   return (
-    <SafeAreaView style={experienceStyles.container}>
-      <ScrollView contentContainerStyle={experienceStyles.scrollContent}>
-        <View style={experienceStyles.content}>
-          <Text style={experienceStyles.title}>Nivel de Experiencia</Text>
-          
-          <Text style={experienceStyles.description}>
-            ¿Cuál es tu nivel de experiencia en entrenamiento?
-          </Text>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerTitle}>Experiencia</Text>
+            <Text style={styles.headerSubtitle}>
+              Define tu nivel de entrenamiento
+            </Text>
+          </View>
+          <View style={styles.progressContainer}>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: '100%' }]} />
+            </View>
+            <Text style={styles.progressText}>3 de 3</Text>
+          </View>
+        </View>
+      </View>
 
-          <View style={experienceStyles.levelsContainer}>
+      <ScrollView 
+        style={styles.content}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.formCard}>
+          <View style={styles.levelsContainer}>
             {experienceLevels.map((level) => (
               <TouchableOpacity
                 key={level.id}
                 style={[
-                  experienceStyles.levelCard,
-                  selectedLevel === level.id && experienceStyles.selectedLevel,
+                  styles.levelCard,
+                  selectedLevel === level.id && styles.selectedLevel,
                 ]}
                 onPress={() => setSelectedLevel(level.id as Experience)}
                 activeOpacity={0.7}
                 disabled={isLoading}
               >
-                <Text style={[experienceStyles.levelLabel, selectedLevel === level.id && experienceStyles.selectedText]}>
-                  {level.label}
-                </Text>
-                <Text style={[experienceStyles.levelDescription, selectedLevel === level.id && experienceStyles.selectedDescriptionText]}>
-                  {level.description}
-                </Text>
+                <View style={styles.levelContent}>
+                  <Text style={[
+                    styles.levelLabel, 
+                    selectedLevel === level.id && styles.selectedText
+                  ]}>
+                    {level.label}
+                  </Text>
+                  <Text style={[
+                    styles.levelDescription, 
+                    selectedLevel === level.id && styles.selectedDescriptionText
+                  ]}>
+                    {level.description}
+                  </Text>
+                </View>
               </TouchableOpacity>
             ))}
           </View>
-
-          {isLoading ? (
-            <View style={experienceStyles.loadingContainer}>
-              <ActivityIndicator size="large" color="#5E4B8B" />
-              <Text style={experienceStyles.loadingText}>Guardando tu perfil...</Text>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={[
-                experienceStyles.button,
-                { opacity: selectedLevel ? 1 : 0.5 }
-              ]}
-              onPress={handleFinish}
-              disabled={!selectedLevel}
-              activeOpacity={0.8}
-            >
-              <Text style={experienceStyles.buttonText}>Finalizar</Text>
-            </TouchableOpacity>
-          )}
         </View>
+
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#5E4B8B" />
+            <Text style={styles.loadingText}>Guardando tu perfil...</Text>
+            <Text style={styles.loadingSubtext}>Esto puede tomar unos segundos</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[
+              styles.button,
+              { opacity: selectedLevel ? 1 : 0.6 }
+            ]}
+            onPress={handleFinish}
+            disabled={!selectedLevel}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.buttonText}>Completar configuración</Text>
+            <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const experienceStyles = StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f7f5fc",
+    backgroundColor: "#FAFAFA",
   },
-  scrollContent: {
-    flexGrow: 1,
+  header: {
+    backgroundColor: '#FFFFFF',
+    paddingTop: 20,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#D6CDE8',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerTextContainer: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#2D1B4E',
+    marginBottom: 2,
+  },
+  headerSubtitle: {
+    fontSize: 15,
+    color: '#6B5B95',
+    fontWeight: '400',
+  },
+  progressContainer: {
+    alignItems: 'flex-end',
+  },
+  progressBar: {
+    width: 60,
+    height: 4,
+    backgroundColor: '#EDE9FE',
+    borderRadius: 2,
+    marginBottom: 4,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#5E4B8B',
+    borderRadius: 2,
+  },
+  progressText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
   },
   content: {
     flex: 1,
-    padding: 20,
   },
-  title: {
-    fontSize: 26,
-    fontWeight: "700",
-    color: "#5E4B8B",
-    marginTop: 20,
-    marginBottom: 12,
+  scrollContent: {
+    paddingBottom: 40,
   },
-  description: {
-    fontSize: 16,
-    color: "#7D7A8C",
-    marginBottom: 30,
+  formCard: {
+    backgroundColor: '#FFFFFF',
+    margin: 20,
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#5E4B8B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   levelsContainer: {
-    marginBottom: 30,
+    gap: 16,
+    marginBottom: 24,
   },
   levelCard: {
-    backgroundColor: "#F3F0FF",
+    backgroundColor: '#F9FAFB',
     padding: 20,
     borderRadius: 16,
-    marginBottom: 15,
-    borderWidth: 1.5,
-    borderColor: "#DCD6F7",
-    shadowColor: "#B793F6",
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.05,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   selectedLevel: {
-    backgroundColor: "#5E4B8B",
-    borderColor: "#5936A2",
-    shadowColor: "#5936A2",
-    shadowOffset: { width: 0, height: 4 },
+    backgroundColor: '#5E4B8B',
+    borderColor: '#5936A2',
+    shadowColor: '#5E4B8B',
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
-    shadowRadius: 6,
+    shadowRadius: 12,
     elevation: 6,
   },
+  levelContent: {
+    gap: 12,
+  },
   levelLabel: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#5E4B8B",
-    marginBottom: 8,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
   },
   levelDescription: {
-    fontSize: 14,
-    color: "#7D7A8C",
-    lineHeight: 20,
+    fontSize: 15,
+    color: '#6B7280',
+    lineHeight: 22,
   },
   selectedText: {
-    color: "#fff",
+    color: '#FFFFFF',
   },
   selectedDescriptionText: {
-    color: "#E6E1FF",
+    color: 'rgba(255, 255, 255, 0.9)',
   },
   loadingContainer: {
-    alignItems: "center",
-    marginVertical: 20,
+    alignItems: 'center',
+    marginVertical: 32,
+    paddingHorizontal: 20,
   },
   loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: "#7D7A8C",
+    marginTop: 16,
+    fontSize: 18,
+    color: '#1F2937',
+    fontWeight: '600',
+  },
+  loadingSubtext: {
+    marginTop: 4,
+    fontSize: 14,
+    color: '#6B7280',
   },
   button: {
-    width: "100%",
-    backgroundColor: "#5E4B8B",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#5E4B8B',
+    marginHorizontal: 20,
     paddingVertical: 16,
-    borderRadius: 30,
-    alignItems: "center",
-    shadowColor: "#8B63D7",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 8,
+    borderRadius: 16,
+    gap: 8,
+    shadowColor: '#5E4B8B',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
   },
   buttonText: {
-    color: "#fff",
-    fontWeight: "700",
+    color: '#FFFFFF',
+    fontWeight: '700',
     fontSize: 18,
-    letterSpacing: 1,
   },
 });

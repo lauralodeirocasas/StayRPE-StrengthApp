@@ -91,7 +91,7 @@ export default function ExperienceLevelScreen() {
       
       if (response.ok) {
         await AsyncStorage.setItem("onboardingComplete", "true");
-        router.replace("/(tabs)/profile");
+        router.replace("/(tabs)/calendar");
       } else {
         Alert.alert("Error", data.error || "Hubo un problema al guardar tu perfil. Inténtalo de nuevo.");
       }

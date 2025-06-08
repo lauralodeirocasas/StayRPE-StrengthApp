@@ -717,14 +717,14 @@ const WorkoutScreen = () => {
       
       if (saveSuccess) {
         Alert.alert(
-          '¡Entrenamiento Completado! 🎉',
+          '¡Entrenamiento Completado!',
           `Duración: ${workoutDuration} minutos\nSeries completadas: ${progress.completed}/${progress.total} (${progress.percentage}%)\n\n¡Entrenamiento guardado en tu historial!`,
           [
             {
               text: 'Ver Historial',
               onPress: () => {
                 setShowFinishModal(false);
-                router.replace('/(tabs)/history');
+                router.replace('/(tabs)/profile/workout-history');
               }
             },
             {

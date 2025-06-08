@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -159,6 +160,61 @@ public class RoutineController {
             return ResponseEntity.status(403).body(Map.of("error", "No tienes permisos para modificar esta rutina"));
         }
 
+        // 🔥 VERIFICAR SI LA RUTINA ESTÁ EN USO EN MACROCICLOS ACTIVOS
+        long activeMacrocyclesUsingRoutine = macrocycleDayPlanRepository.countByRoutineAndMacrocycleIsArchivedFalse(routine);
+
+        if (activeMacrocyclesUsingRoutine > 0) {
+            List<Macrocycle> activeMacrocycles = macrocycleDayPlanRepository.findActiveMacrocyclesByRoutine(routine);
+
+            String macrocycleNames = activeMacrocycles.stream()
+                    .map(Macrocycle::getName)
+                    .collect(Collectors.joining(", "));
+
+            String errorMessage;
+            if (activeMacrocyclesUsingRoutine == 1) {
+                errorMessage = String.format(
+                        "No se puede editar la rutina \"%s\" porque está siendo utilizada en el macrociclo activo \"%s\". " +
+                                "Para editarla, primero archiva o desactiva el macrociclo, o duplica la rutina para crear una nueva versión.",
+                        routine.getName(),
+                        macrocycleNames
+                );
+            } else {
+                errorMessage = String.format(
+                        "No se puede editar la rutina \"%s\" porque está siendo utilizada en %d macrociclos activos: %s. " +
+                                "Para editarla, primero archiva o desactiva estos macrociclos, o duplica la rutina para crear una nueva versión.",
+                        routine.getName(),
+                        activeMacrocyclesUsingRoutine,
+                        macrocycleNames
+                );
+            }
+
+            logger.warn("Intento de editar rutina {} que está en uso en {} macrociclo(s) activo(s): {}",
+                    routine.getName(), activeMacrocyclesUsingRoutine, macrocycleNames);
+
+            return ResponseEntity.status(409).body(Map.of(
+                    "error", errorMessage,
+                    "errorCode", "ROUTINE_IN_USE",
+                    "routineName", routine.getName(),
+                    "activeMacrocycles", activeMacrocyclesUsingRoutine,
+                    "macrocycleDetails", activeMacrocycles.stream()
+                            .map(m -> Map.of(
+                                    "id", m.getId(),
+                                    "name", m.getName(),
+                                    "isCurrentlyActive", m.isCurrentlyActive(),
+                                    "startDate", m.getStartDate(),
+                                    "endDate", m.getEndDate() != null ? m.getEndDate() : "En curso"
+                            ))
+                            .collect(Collectors.toList()),
+                    "canEdit", false,
+                    "suggestions", List.of(
+                            "Duplicar la rutina para crear una nueva versión",
+                            "Archivar temporalmente los macrociclos que la usan",
+                            "Desactivar los macrociclos activos",
+                            "Esperar a que terminen los macrociclos"
+                    )
+            ));
+        }
+
         if (routineDTO.getName() == null || routineDTO.getName().trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "El nombre es obligatorio"));
         }
@@ -177,6 +233,7 @@ public class RoutineController {
             routine.setName(trimmedName);
             routine.setDescription(routineDTO.getDescription());
 
+            // Como no está en macrociclos activos, podemos proceder normalmente
             routineExerciseRepository.deleteByRoutineId(routine.getId());
 
             if (routineDTO.getExercises() != null && !routineDTO.getExercises().isEmpty()) {
@@ -186,10 +243,14 @@ public class RoutineController {
             }
 
             Routine savedRoutine = routineRepository.save(routine);
-            logger.info("Rutina actualizada correctamente");
+            logger.info("Rutina actualizada correctamente: {}", savedRoutine.getName());
 
             RoutineResponse response = convertToFullResponse(savedRoutine);
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(Map.of(
+                    "routine", response,
+                    "message", "Rutina actualizada correctamente",
+                    "updated", true
+            ));
 
         } catch (Exception e) {
             logger.error("Error al actualizar rutina", e);
@@ -282,10 +343,203 @@ public class RoutineController {
         }
     }
 
+    // 🔥 NUEVO ENDPOINT: Verificar si una rutina es editable
+    @GetMapping("/{id}/editable")
+    public ResponseEntity<?> checkIfRoutineIsEditable(@PathVariable Long id) {
+        logger.info("Verificando si la rutina {} es editable", id);
+
+        Usuario usuario = getCurrentUser();
+        if (usuario == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Usuario no encontrado"));
+        }
+
+        Optional<Routine> routineOpt = routineRepository.findById(id);
+        if (routineOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Routine routine = routineOpt.get();
+
+        if (!routine.getCreatedBy().getId().equals(usuario.getId())) {
+            return ResponseEntity.status(403).body(Map.of("error", "No tienes permisos para ver esta rutina"));
+        }
+
+        if (!routine.isActive()) {
+            return ResponseEntity.ok(Map.of(
+                    "editable", false,
+                    "reason", "La rutina está eliminada",
+                    "canEdit", false,
+                    "status", "DELETED"
+            ));
+        }
+
+        // Verificar si está en macrociclos activos
+        long activeMacrocyclesUsingRoutine = macrocycleDayPlanRepository.countByRoutineAndMacrocycleIsArchivedFalse(routine);
+
+        if (activeMacrocyclesUsingRoutine > 0) {
+            List<Macrocycle> activeMacrocycles = macrocycleDayPlanRepository.findActiveMacrocyclesByRoutine(routine);
+
+            return ResponseEntity.ok(Map.of(
+                    "editable", false,
+                    "reason", "La rutina está siendo utilizada en macrociclos activos",
+                    "status", "IN_USE",
+                    "activeMacrocycles", activeMacrocyclesUsingRoutine,
+                    "macrocycles", activeMacrocycles.stream()
+                            .map(m -> Map.of(
+                                    "id", m.getId(),
+                                    "name", m.getName(),
+                                    "isCurrentlyActive", m.isCurrentlyActive(),
+                                    "startDate", m.getStartDate(),
+                                    "endDate", m.getEndDate() != null ? m.getEndDate() : "En curso"
+                            ))
+                            .collect(Collectors.toList()),
+                    "canEdit", false,
+                    "suggestions", List.of(
+                            "Duplicar la rutina para crear una nueva versión",
+                            "Archivar temporalmente los macrociclos que la usan",
+                            "Desactivar los macrociclos activos"
+                    )
+            ));
+        }
+
+        // También verificar si está en macrociclos archivados (solo información)
+        long totalMacrocycles = macrocycleDayPlanRepository.countByRoutine(routine);
+        long archivedMacrocyclesUsingRoutine = totalMacrocycles - activeMacrocyclesUsingRoutine;
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("editable", true);
+        response.put("canEdit", true);
+        response.put("status", "AVAILABLE");
+        response.put("activeMacrocycles", 0);
+        response.put("archivedMacrocycles", archivedMacrocyclesUsingRoutine);
+
+        if (archivedMacrocyclesUsingRoutine > 0) {
+            response.put("info", String.format(
+                    "Esta rutina fue utilizada en %d macrociclo(s) archivado(s), pero se puede editar libremente.",
+                    archivedMacrocyclesUsingRoutine
+            ));
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    // 🔥 NUEVO ENDPOINT: Duplicar rutina (útil para cuando está en uso)
+    @PostMapping("/{id}/duplicate")
+    @Transactional
+    public ResponseEntity<?> duplicateRoutine(@PathVariable Long id, @RequestBody(required = false) Map<String, String> request) {
+        logger.info("Duplicando rutina con ID: {}", id);
+
+        Usuario usuario = getCurrentUser();
+        if (usuario == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Usuario no encontrado"));
+        }
+
+        Optional<Routine> originalRoutineOpt = routineRepository.findById(id);
+        if (originalRoutineOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Routine originalRoutine = originalRoutineOpt.get();
+
+        if (!originalRoutine.getCreatedBy().getId().equals(usuario.getId())) {
+            return ResponseEntity.status(403).body(Map.of("error", "No tienes permisos para duplicar esta rutina"));
+        }
+
+        try {
+            // Generar nombre para la copia
+            String newName;
+            if (request != null && request.containsKey("name") && !request.get("name").trim().isEmpty()) {
+                newName = request.get("name").trim();
+            } else {
+                newName = generateDuplicateName(originalRoutine.getName(), usuario);
+            }
+
+            // Verificar que el nombre no exista
+            boolean nameExists = routineRepository.existsByCreatedByAndNameIgnoreCaseAndIsActiveTrue(usuario, newName);
+            if (nameExists) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "Ya tienes una rutina con el nombre '" + newName + "'. Por favor, elige un nombre diferente."
+                ));
+            }
+
+            // Crear la rutina duplicada
+            Routine duplicatedRoutine = Routine.builder()
+                    .name(newName)
+                    .description(originalRoutine.getDescription())
+                    .createdBy(usuario)
+                    .isActive(true)
+                    .build();
+
+            Routine savedDuplicatedRoutine = routineRepository.save(duplicatedRoutine);
+
+            // Duplicar los ejercicios y series
+            List<RoutineExercise> originalExercises = routineExerciseRepository.findByRoutineIdOrderByOrder(originalRoutine.getId());
+
+            for (RoutineExercise originalExercise : originalExercises) {
+                RoutineExercise duplicatedExercise = RoutineExercise.builder()
+                        .routine(savedDuplicatedRoutine)
+                        .exercise(originalExercise.getExercise())
+                        .order(originalExercise.getOrder())
+                        .numberOfSets(originalExercise.getNumberOfSets())
+                        .restBetweenSets(originalExercise.getRestBetweenSets())
+                        .notes(originalExercise.getNotes())
+                        .build();
+
+                RoutineExercise savedDuplicatedExercise = routineExerciseRepository.save(duplicatedExercise);
+
+                // Duplicar las series
+                List<ExerciseSet> originalSets = exerciseSetRepository.findByRoutineExerciseIdOrderBySetNumber(originalExercise.getId());
+
+                for (ExerciseSet originalSet : originalSets) {
+                    ExerciseSet duplicatedSet = ExerciseSet.builder()
+                            .routineExercise(savedDuplicatedExercise)
+                            .setNumber(originalSet.getSetNumber())
+                            .targetRepsMin(originalSet.getTargetRepsMin())
+                            .targetRepsMax(originalSet.getTargetRepsMax())
+                            .targetWeight(originalSet.getTargetWeight())
+                            .rir(originalSet.getRir())
+                            .rpe(originalSet.getRpe())
+                            .notes(originalSet.getNotes())
+                            .build();
+
+                    exerciseSetRepository.save(duplicatedSet);
+                }
+            }
+
+            logger.info("Rutina duplicada exitosamente: {} → {}", originalRoutine.getName(), newName);
+
+            RoutineResponse response = convertToFullResponse(savedDuplicatedRoutine);
+            return ResponseEntity.ok(Map.of(
+                    "routine", response,
+                    "message", String.format("Rutina duplicada exitosamente como '%s'", newName),
+                    "originalRoutineName", originalRoutine.getName(),
+                    "duplicatedRoutineName", newName,
+                    "duplicated", true
+            ));
+
+        } catch (Exception e) {
+            logger.error("Error al duplicar rutina", e);
+            return ResponseEntity.badRequest().body(Map.of("error", "Error al duplicar la rutina: " + e.getMessage()));
+        }
+    }
+
     private Usuario getCurrentUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         String username = auth.getName();
         return usuarioRepository.findByUsername(username).orElse(null);
+    }
+
+    private String generateDuplicateName(String originalName, Usuario usuario) {
+        String baseName = originalName;
+        int counter = 1;
+        String newName;
+
+        do {
+            newName = String.format("%s (Copia %d)", baseName, counter);
+            counter++;
+        } while (routineRepository.existsByCreatedByAndNameIgnoreCaseAndIsActiveTrue(usuario, newName));
+
+        return newName;
     }
 
     private void createRoutineExercise(Routine routine, CreateRoutineExerciseDTO exerciseDTO) {

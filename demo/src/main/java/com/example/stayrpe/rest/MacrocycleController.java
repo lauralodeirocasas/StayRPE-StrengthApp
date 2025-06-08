@@ -622,25 +622,78 @@ public class MacrocycleController {
             Optional<Macrocycle> macrocycleOpt = macrocycleRepository.findById(id);
 
             if (macrocycleOpt.isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Macrociclo no encontrado"));
+                return ResponseEntity.status(404).body(Map.of("error", "Macrociclo no encontrado"));
             }
 
             Macrocycle macrocycle = macrocycleOpt.get();
 
             if (!macrocycle.getCreatedBy().getId().equals(usuario.getId())) {
-                return ResponseEntity.badRequest().body(Map.of("error", "No tienes permisos para eliminar este macrociclo"));
+                return ResponseEntity.status(403).body(Map.of("error", "No tienes permisos para eliminar este macrociclo"));
             }
 
+            String macrocycleName = macrocycle.getName();
+
+            // 🔥 PASO 1: Si el macrociclo está activo, hacer la misma limpieza que deactivate
+            long customizationCount = 0;
+            long workoutSessionsCount = 0;
+
+            if (macrocycle.isCurrentlyActive()) {
+                logger.info("Macrociclo activo detectado, realizando limpieza como en deactivate...");
+
+                // Contar customizaciones antes de eliminar
+                customizationCount = macrocycleDayCustomizationRepository.countByMacrocycle(macrocycle);
+                workoutSessionsCount = workoutSessionRepository.countByMacrocycle(macrocycle);
+
+                // Eliminar customizaciones (igual que en deactivate)
+                if (customizationCount > 0) {
+                    macrocycleCustomizationService.resetAllCustomizations(macrocycle);
+                    logger.info("Eliminadas {} customizaciones", customizationCount);
+                }
+
+                // Desasociar entrenamientos (igual que en deactivate)
+                if (workoutSessionsCount > 0) {
+                    workoutSessionRepository.dissociateMacrocycleFromUserSessions(usuario, macrocycle);
+                    logger.info("Desasociados {} entrenamientos", workoutSessionsCount);
+                }
+
+                // Desactivar el macrociclo
+                macrocycle.setCurrentlyActive(false);
+                macrocycleRepository.save(macrocycle);
+                logger.info("Macrociclo desactivado antes de eliminar");
+            } else {
+                // Si no está activo, aún puede tener customizaciones antiguas
+                customizationCount = macrocycleDayCustomizationRepository.countByMacrocycle(macrocycle);
+                workoutSessionsCount = workoutSessionRepository.countByMacrocycle(macrocycle);
+
+                if (customizationCount > 0) {
+                    macrocycleCustomizationService.resetAllCustomizations(macrocycle);
+                    logger.info("Eliminadas {} customizaciones residuales", customizationCount);
+                }
+
+                if (workoutSessionsCount > 0) {
+                    workoutSessionRepository.dissociateMacrocycleFromUserSessions(usuario, macrocycle);
+                    logger.info("Desasociados {} entrenamientos residuales", workoutSessionsCount);
+                }
+            }
+
+            // 🔥 PASO 2: Eliminar planes de día
             dayPlanRepository.deleteByMacrocycle(macrocycle);
 
+            // 🔥 PASO 3: Finalmente eliminar el macrociclo
             macrocycleRepository.delete(macrocycle);
-            logger.info("Macrociclo eliminado: {}", macrocycle.getName());
+            logger.info("Macrociclo '{}' eliminado exitosamente", macrocycleName);
 
-            return ResponseEntity.ok(Map.of("message", "Macrociclo eliminado correctamente"));
+            // Construir mensaje informativo para el usuario
+            StringBuilder userMessage = new StringBuilder("Macrociclo eliminado correctamente.");
+
+            return ResponseEntity.ok(Map.of(
+                    "message", userMessage.toString(),
+                    "macrocycleName", macrocycleName
+            ));
 
         } catch (Exception e) {
-            logger.error("Error al eliminar macrociclo", e);
-            return ResponseEntity.badRequest().body(Map.of("error", "Error al eliminar el macrociclo"));
+            logger.error("Error al eliminar macrociclo con ID: {}", id, e);
+            return ResponseEntity.status(500).body(Map.of("error", "Error al eliminar el macrociclo"));
         }
     }
 

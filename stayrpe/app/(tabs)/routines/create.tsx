@@ -240,20 +240,17 @@ const CreateRoutineScreen = () => {
     });
   };
 
-  // 🔥 FIX: Función corregida para manejar el input de descanso
   const handleRestChange = (text: string) => {
     if (!editingExercise) return;
     
-    // Permitir string vacío para que el usuario pueda borrar y escribir
     if (text === '') {
       setEditingExercise({
         ...editingExercise,
-        restBetweenSets: 0 // Temporal mientras escribe
+        restBetweenSets: 0
       });
       return;
     }
     
-    // Solo convertir a número si hay contenido
     const numValue = parseInt(text);
     if (!isNaN(numValue) && numValue >= 0) {
       setEditingExercise({
@@ -263,6 +260,102 @@ const CreateRoutineScreen = () => {
     }
   };
 
+  // 🔥 NUEVA FUNCIÓN: Manejar error de rutina en uso
+  const handleRoutineInUseError = (errorData: any) => {
+    const macrocycleNames = errorData.macrocycleDetails
+      ?.map((m: any) => m.name)
+      ?.join(', ') || 'macrociclos activos';
+    
+    const macrocycleCount = errorData.activeMacrocycles || 0;
+    
+    let alertTitle = 'No se puede editar';
+    let alertMessage = '';
+
+    alertMessage = `La rutina "${errorData.routineName}" está siendo utilizada en el macrociclo activo.\n\nSolo podras editar aquellas rutinas que no esté en un macrociclo activo.`;
+    
+    
+    Alert.alert(
+      alertTitle,
+      alertMessage,
+      [
+        {
+          text: 'Duplicar rutina',
+          onPress: () => handleDuplicateRoutine(),
+          style: 'default'
+        },
+        {
+          text: 'Desactivar macrociclo',
+          onPress: () => router.push("/(tabs)/macrocycle"),
+          style: 'default'
+        },
+        {
+          text: 'Cancelar',
+          style: 'cancel'
+        }
+      ],
+      { cancelable: true }
+    );
+  };
+
+  // 🔥 NUEVA FUNCIÓN: Duplicar rutina
+  const handleDuplicateRoutine = async () => {
+    if (!token || !routineId) return;
+    
+    try {
+      setLoading(true);
+      
+      const response = await fetch(`${API_URL}/routines/${routineId}/duplicate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: `${name} (Copia)`
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        Alert.alert(
+          '¡Rutina duplicada!',
+          `Se creó una copia: "${data.duplicatedRoutineName}". Ahora puedes editarla libremente.`,
+          [
+            {
+              text: 'Editar copia',
+              onPress: () => {
+                router.replace({
+                  pathname: '/routines/create',
+                  params: {
+                    isEditing: 'true',
+                    routineId: data.routine.id.toString(),
+                    routineData: JSON.stringify(data.routine)
+                  }
+                });
+              }
+            },
+            {
+              text: 'Volver',
+              onPress: () => router.back(),
+              style: 'cancel'
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Error', data.error || 'No se pudo duplicar la rutina');
+      }
+    } catch (error) {
+      console.error('Error duplicando rutina:', error);
+      Alert.alert('Error', 'Error de conexión al duplicar la rutina');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  
+
+  // 🔥 ACTUALIZADA: Función de envío con manejo de rutina en uso
   const handleSubmit = async () => {
     if (!token) {
       Alert.alert('Error', 'No se encontró token de autenticación');
@@ -340,22 +433,29 @@ const CreateRoutineScreen = () => {
       const data = await response.json();
       
       if (response.ok) {
+        // Manejar respuesta exitosa
+        let message = successMessage;
+        if (data.routine) {
+          message = `${successMessage}: "${data.routine.name}"`;
+        } else if (data.name) {
+          message = `${successMessage}: "${data.name}"`;
+        }
+        
         Alert.alert(
           "¡Éxito!", 
-          `${successMessage}: "${data.name}"`, 
+          message, 
           [{ text: 'OK', onPress: () => router.back() }]
         );
+      } else if (response.status === 409 && data.errorCode === 'ROUTINE_IN_USE') {
+        // 🔥 NUEVO: Manejar rutina en uso
+        handleRoutineInUseError(data);
       } else {
+        // Otros errores
         if (data.error && data.error.includes('Ya tienes una rutina con el nombre')) {
           Alert.alert(
             'Nombre duplicado', 
             data.error,
-            [
-              { 
-                text: 'OK', 
-                onPress: () => {}
-              }
-            ]
+            [{ text: 'OK', onPress: () => {} }]
           );
         } else {
           Alert.alert(
@@ -373,6 +473,23 @@ const CreateRoutineScreen = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 🔥 NUEVA FUNCIÓN: Renderizar botón de duplicar
+  const renderDuplicateButton = () => {
+    if (!isEditing) return null;
+    
+    return (
+      <TouchableOpacity
+        style={styles.duplicateButton}
+        onPress={handleDuplicateRoutine}
+        disabled={loading}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="copy-outline" size={18} color="#5E4B8B" />
+        <Text style={styles.duplicateButtonText}>Duplicar</Text>
+      </TouchableOpacity>
+    );
   };
 
   if (!token) {
@@ -406,6 +523,8 @@ const CreateRoutineScreen = () => {
               {isEditing ? 'Modifica tu entrenamiento' : 'Crea tu entrenamiento personalizado'}
             </Text>
           </View>
+          {/* 🔥 NUEVO: Botón de duplicar en el header */}
+          {renderDuplicateButton()}
         </View>
       </View>
 
@@ -604,7 +723,6 @@ const CreateRoutineScreen = () => {
                       placeholderTextColor="#9CA3AF"
                       selectTextOnFocus={true}
                       onBlur={() => {
-                        // Si está vacío al salir del input, poner valor por defecto
                         if (!editingExercise?.restBetweenSets || editingExercise.restBetweenSets === 0) {
                           setEditingExercise(prev => prev ? { ...prev, restBetweenSets: 90 } : null);
                         }
@@ -826,6 +944,23 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#6B7280',
     fontWeight: '400',
+  },
+  // 🔥 NUEVO: Estilo para botón de duplicar
+  duplicateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 6,
+  },
+  duplicateButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#5E4B8B',
   },
   content: {
     flex: 1,

@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="ff46ee6f-2343-4eea-83c6-353464cdf4c4" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.gitattributes" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.mvn/wrapper/maven-wrapper.properties" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/mvnw" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/mvnw.cmd" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/StayrpeApplication.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/config/CustomUserDetailsService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/config/SecurityConfig.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/CompleteWorkoutRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/CreateExerciseSetDTO.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/CreateMacrocycleDTO.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/CreateRoutineDTO.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/CreateRoutineExerciseDTO.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/DayCustomizationRequest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/DayCustomizationResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/ExerciseDTO.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/ExerciseResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/ExerciseSetResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/RoutineExerciseResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/RoutineListResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/RoutineResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/UserProfileDTO.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/UserProfileResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/WorkoutHistoryExercise.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/WorkoutHistoryResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/WorkoutHistorySet.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/dto/WorkoutStatsResponse.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/jwt/JwtFilter.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/jwt/JwtUtil.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/model/Exercise.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/model/ExerciseSet.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/model/Macrocycle.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/model/MacrocycleDayCustomization.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/model/MacrocycleDayPlan.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/model/Routine.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/model/RoutineExercise.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/model/UserProfile.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/model/Usuario.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/model/WorkoutSession.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/model/WorkoutSessionExercise.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/model/WorkoutSessionSet.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/repository/ExerciseRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/repository/ExerciseSetRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/repository/MacrocycleDayCustomizationRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/repository/MacrocycleDayPlanRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/repository/MacrocycleRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/repository/RoutineExerciseRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/repository/RoutineRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/repository/UserProfileRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/repository/UsuarioRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/repository/WorkoutSessionRepository.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/rest/AuthController.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/rest/DemoRest.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/rest/ExerciseController.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/rest/MacrocycleController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/rest/MacrocycleController.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/rest/RoutineController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/rest/RoutineController.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/rest/UserProfileController.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/rest/WorkoutHistoryController.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/service/MacrocycleCustomizationService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/stayrpe/service/WorkoutSessionService.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/resources/application.properties" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Kotlin Class" />
+        <option value="Class" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="MavenImportPreferences">
+    <option name="generalSettings">
+      <MavenGeneralSettings>
+        <option name="mavenHomeTypeForPersistence" value="WRAPPER" />
+      </MavenGeneralSettings>
+    </option>
+  </component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="CurrentFile" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 4
+}</component>
+  <component name="ProjectId" id="2vgmYGx3mcp1pgQ4xK4ohvmavO4" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Application.DemoApplication.executor": "Run",
+    "Application.StayrpeApplication.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "Merging main",
+    "kotlin-language-version-configured": "true",
+    "last_opened_file_path": "C:/Users/laura/Desktop/TFG/stayrpe/stayrpe-backend"
+  }
+}]]></component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="ff46ee6f-2343-4eea-83c6-353464cdf4c4" name="Changes" comment="" />
+      <created>1744575137799</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1744575137799</updated>
+    </task>
+    <servers />
+  </component>
+</project>

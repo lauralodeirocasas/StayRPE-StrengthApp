@@ -46,7 +46,7 @@ const EditProfileScreen = () => {
   const [token, setToken] = useState<string | null>(null);
   const [originalProfile, setOriginalProfile] = useState<UserProfile | null>(null);
 
-  const API_URL = 'http://192.168.0.57:8080';
+  const API_URL = 'http://192.168.0.32:8080';
 
   const sexOptions = [
     { value: 'male', label: 'Masculino' },

@@ -117,7 +117,7 @@ const CustomizeDayScreen = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  const API_URL = 'http://192.168.0.57:8080';
+  const API_URL = 'http://192.168.0.32:8080';
   const macrocycleId = params.macrocycleId as string;
   const absoluteDay = parseInt(params.absoluteDay as string);
   const routineName = params.routineName as string;
@@ -951,13 +951,7 @@ const CustomizeDayScreen = () => {
               <Ionicons name="pencil" size={16} color="#5E4B8B" />
               <Text style={styles.editButtonText}>Editar</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.removeSetButton}
-              onPress={() => handleRemoveSetFromExercise(exerciseIndex, setIndex)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="trash-outline" size={16} color="#EF4444" />
-            </TouchableOpacity>
+            
           </View>
         </View>
         
@@ -1000,15 +994,7 @@ const CustomizeDayScreen = () => {
               ]}>
                 {exercise.exerciseName}
               </Text>
-              <View style={styles.exerciseActions}>
-                <TouchableOpacity
-                  style={styles.removeExerciseButton}
-                  onPress={() => handleRemoveExercise(exercise)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="trash-outline" size={16} color="#EF4444" />
-                </TouchableOpacity>
-              </View>
+              
             </View>
             <View style={styles.exerciseMeta}>
               <View style={styles.muscleChip}>
@@ -1063,16 +1049,7 @@ const CustomizeDayScreen = () => {
               )}
             </View>
             
-            <TouchableOpacity
-              style={styles.addSetButton}
-              onPress={() => handleAddSetToExercise(exerciseIndex)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.addSetIcon}>
-                <Ionicons name="add-circle" size={20} color="#5E4B8B" />
-              </View>
-              <Text style={styles.addSetText}>Añadir serie</Text>
-            </TouchableOpacity>
+            
           </>
         )}
       </View>
@@ -1594,22 +1571,7 @@ const CustomizeDayScreen = () => {
           renderExerciseCard(exercise, exerciseIndex)
         )}
 
-        <TouchableOpacity
-          style={styles.addExerciseButton}
-          onPress={handleAddExercise}
-          activeOpacity={0.7}
-        >
-          <View style={styles.addExerciseIcon}>
-            <Ionicons name="add-circle" size={24} color="#5E4B8B" />
-          </View>
-          <View style={styles.addExerciseContent}>
-            <Text style={styles.addExerciseText}>Añadir ejercicio</Text>
-            <Text style={styles.addExerciseSubtext}>
-              Agrega un ejercicio adicional a este día
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color="#5E4B8B" />
-        </TouchableOpacity>
+        
 
         {showInfoCard && (
           <View style={styles.infoCard}>

@@ -185,7 +185,7 @@ const MacrocyclesScreen = () => {
   const [resettingId, setResettingId] = useState<number | null>(null);
   
   const router = useRouter();
-  const API_URL = 'http://192.168.0.57:8080';
+  const API_URL = 'http://192.168.0.32:8080';
 
   const getInfoCardKey = (username: string) => `macrocycles_info_hidden_${username}`;
 

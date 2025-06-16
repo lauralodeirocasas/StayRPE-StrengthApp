@@ -81,7 +81,7 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      const res = await fetch("http://192.168.0.57:8080/login", {
+      const res = await fetch("http://192.168.0.32:8080/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -95,7 +95,7 @@ export default function Login() {
         await AsyncStorage.setItem("token", data.token);
         
         try {
-          const profileRes = await fetch("http://192.168.0.57:8080/user/profile", {
+          const profileRes = await fetch("http://192.168.0.32:8080/user/profile", {
             headers: {
               "Authorization": `Bearer ${data.token}`
             }

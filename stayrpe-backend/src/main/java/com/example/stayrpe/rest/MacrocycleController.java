@@ -676,10 +676,10 @@ public class MacrocycleController {
                 }
             }
 
-            // 🔥 PASO 2: Eliminar planes de día
+
             dayPlanRepository.deleteByMacrocycle(macrocycle);
 
-            // 🔥 PASO 3: Finalmente eliminar el macrociclo
+
             macrocycleRepository.delete(macrocycle);
             logger.info("Macrociclo '{}' eliminado exitosamente", macrocycleName);
 

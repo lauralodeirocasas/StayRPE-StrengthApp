@@ -66,7 +66,7 @@ const SimpleCalendarScreen = () => {
   const [customizedDays, setCustomizedDays] = useState<Set<number>>(new Set());
 
   const router = useRouter();
-  const API_URL = 'http://192.168.0.57:8080';
+  const API_URL = 'http://192.168.0.32:8080';
 
   const getInfoCardKey = (username: string) => `calendar_info_hidden_${username}`;
 
@@ -166,7 +166,7 @@ const SimpleCalendarScreen = () => {
           loadDayPlans(activeMacrocycle.id),
           loadCustomizedDays(activeMacrocycle.id)
         ]).catch(error => {
-          console.error('❌ Error recargando datos específicos:', error);
+          console.error(' Error recargando datos específicos:', error);
         });
       } else if (token && !activeMacrocycle && !loading) {
         setDayPlans([]);

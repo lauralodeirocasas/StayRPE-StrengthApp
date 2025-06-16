@@ -86,7 +86,7 @@ const WorkoutHistoryScreen = () => {
   const [availableMacrocycles, setAvailableMacrocycles] = useState<string[]>([]);
   
   const router = useRouter();
-  const API_URL = 'http://192.168.0.57:8080';
+  const API_URL = 'http://192.168.0.32:8080';
 
   const getInfoCardKey = (username: string) => `workout_history_info_hidden_${username}`;
 

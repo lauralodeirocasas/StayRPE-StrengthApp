@@ -126,7 +126,7 @@ const WorkoutScreen = () => {
   const [notesExpanded, setNotesExpanded] = useState(false);
 
   const loadingRef = useRef(false);
-  const API_URL = 'http://192.168.0.57:8080';
+  const API_URL = 'http://192.168.0.32:8080';
   const routineId = params.routineId as string;
   const routineName = params.routineName as string;
 

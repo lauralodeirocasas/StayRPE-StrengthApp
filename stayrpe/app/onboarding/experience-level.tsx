@@ -78,7 +78,7 @@ export default function ExperienceLevelScreen() {
         experienceLevel: selectedLevel
       };
       
-      const response = await fetch("http://192.168.0.57:8080/user/profile", {
+      const response = await fetch("http://192.168.0.32:8080/user/profile", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

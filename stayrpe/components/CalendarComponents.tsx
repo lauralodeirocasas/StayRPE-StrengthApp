@@ -114,7 +114,7 @@ const checkIfDayCompleted = async (
   macrocycleId: number, 
   absoluteDay: number, 
   token: string,
-  apiUrl: string = 'http://192.168.0.57:8080'
+  apiUrl: string = 'http://192.168.0.32:8080'
 ): Promise<boolean> => {
   try {
     console.log(`🔍 Verificando día ${absoluteDay} del macrociclo ${macrocycleId}...`);

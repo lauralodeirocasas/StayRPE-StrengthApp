@@ -160,7 +160,7 @@ public class RoutineController {
             return ResponseEntity.status(403).body(Map.of("error", "No tienes permisos para modificar esta rutina"));
         }
 
-        // 🔥 VERIFICAR SI LA RUTINA ESTÁ EN USO EN MACROCICLOS ACTIVOS
+
         long activeMacrocyclesUsingRoutine = macrocycleDayPlanRepository.countByRoutineAndMacrocycleIsArchivedFalse(routine);
 
         if (activeMacrocyclesUsingRoutine > 0) {
@@ -290,25 +290,21 @@ public class RoutineController {
                 String errorMessage;
                 if (activeMacrocyclesUsingRoutine > 0 && archivedMacrocyclesUsingRoutine > 0) {
                     errorMessage = String.format(
-                            "No se puede eliminar la rutina \"%s\" porque está siendo utilizada en %d macrociclo(s) activo(s) y %d archivado(s). " +
+                            "No se puede eliminar la rutina \"%s\" porque está siendo utilizada en  macrociclo(s) activo(s) y  archivado(s). " +
                                     "Para eliminarla, primero debes quitarla de todos los macrociclos que la usan.",
-                            routine.getName(),
-                            activeMacrocyclesUsingRoutine,
-                            archivedMacrocyclesUsingRoutine
+                            routine.getName()
                     );
                 } else if (activeMacrocyclesUsingRoutine > 0) {
                     errorMessage = String.format(
-                            "No se puede eliminar la rutina \"%s\" porque está siendo utilizada en %d macrociclo(s) activo(s). " +
+                            "No se puede eliminar la rutina \"%s\" porque está siendo utilizada en  macrociclo(s) activo(s). " +
                                     "Para eliminarla, primero archiva o elimina los macrociclos que la usan.",
-                            routine.getName(),
-                            activeMacrocyclesUsingRoutine
+                            routine.getName()
                     );
                 } else {
                     errorMessage = String.format(
-                            "No se puede eliminar la rutina \"%s\" porque está siendo utilizada en %d macrociclo(s) archivado(s). " +
+                            "No se puede eliminar la rutina \"%s\" porque está siendo utilizada en macrociclo(s) archivado(s). " +
                                     "Para eliminarla, primero debes eliminar definitivamente los macrociclos archivados que la usan.",
-                            routine.getName(),
-                            archivedMacrocyclesUsingRoutine
+                            routine.getName()
                     );
                 }
 

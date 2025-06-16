@@ -22,7 +22,7 @@ export default function Logueado() {
           return;
         }
 
-        const response = await fetch("http://192.168.0.57:8080/user/profile", {
+        const response = await fetch("http://192.168.0.32:8080/user/profile", {
           headers: { Authorization: `Bearer ${token}` }
         });
 

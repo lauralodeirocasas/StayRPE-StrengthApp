@@ -91,5 +91,3 @@ El proyecto incluye:
 ## Autoría
 
 - **Autor**: Laura Lodeiro Casas  
-- **Tutor**: Jesús Ángel Pérez Roca  
-- **Centro**: C.P.R. Liceo “La Paz”

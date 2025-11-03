@@ -77,7 +77,7 @@ export default function Register() {
         lastName,
       });
 
-      const res = await fetch("http://192.168.0.32:8080/register", {
+      const res = await fetch(`${process.env.EXPO_PUBLIC_API_BASE}/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -92,7 +92,7 @@ export default function Register() {
         return;
       }
 
-      const loginRes = await fetch("http://192.168.0.32:8080/login", {
+      const loginRes = await fetch(`${process.env.EXPO_PUBLIC_API_BASE}/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

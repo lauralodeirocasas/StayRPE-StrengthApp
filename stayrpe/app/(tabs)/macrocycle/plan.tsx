@@ -38,7 +38,7 @@ const PlanMacrocycleScreen = () => {
   const [showRoutineModal, setShowRoutineModal] = useState(false);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
-  const API_URL = 'http://192.168.0.32:8080';
+  const API_URL =  process.env.EXPO_PUBLIC_API_BASE;
 
   const macrocycleData = {
     name: params.name as string,

@@ -46,7 +46,7 @@ const ExercisePickerModal: React.FC<ExercisePickerModalProps> = ({
   subtitle = "Busca un ejercicio o crea uno nuevo"
 }) => {
   const router = useRouter();
-  const API_URL = 'http://192.168.0.32:8080';
+  const API_URL = process.env.EXPO_PUBLIC_API_BASE;
 
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(false);

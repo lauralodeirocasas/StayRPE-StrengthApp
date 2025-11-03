@@ -15,6 +15,8 @@ import { useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from '@expo/vector-icons';
 
+
+
 export default function Login() {
   const router = useRouter();
   const [username, setUsername] = useState("");
@@ -81,7 +83,7 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      const res = await fetch("http://192.168.0.32:8080/login", {
+      const res = await fetch(`${process.env.EXPO_PUBLIC_API_BASE}/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -95,7 +97,7 @@ export default function Login() {
         await AsyncStorage.setItem("token", data.token);
         
         try {
-          const profileRes = await fetch("http://192.168.0.32:8080/user/profile", {
+          const profileRes = await fetch(`${process.env.EXPO_PUBLIC_API_BASE}/user/profile`, {
             headers: {
               "Authorization": `Bearer ${data.token}`
             }

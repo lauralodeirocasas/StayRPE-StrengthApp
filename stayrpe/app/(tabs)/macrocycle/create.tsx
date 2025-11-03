@@ -31,7 +31,7 @@ const CreateMacrocycleScreen = () => {
   const [loading, setLoading] = useState(false);
   const [token, setToken] = useState<string | null>(null);
 
-  const API_URL = 'http://192.168.0.32:8080';
+  const API_URL =  process.env.EXPO_PUBLIC_API_BASE;
 
   useEffect(() => {
     const getToken = async () => {

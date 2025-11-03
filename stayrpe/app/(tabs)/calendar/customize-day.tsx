@@ -117,7 +117,7 @@ const CustomizeDayScreen = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  const API_URL = 'http://192.168.0.32:8080';
+  const API_URL =  process.env.EXPO_PUBLIC_API_BASE;
   const macrocycleId = params.macrocycleId as string;
   const absoluteDay = parseInt(params.absoluteDay as string);
   const routineName = params.routineName as string;

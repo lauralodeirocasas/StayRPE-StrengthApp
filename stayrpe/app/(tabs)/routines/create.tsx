@@ -84,7 +84,7 @@ const CreateRoutineScreen = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [routineId, setRoutineId] = useState<number | null>(null);
 
-  const API_URL = 'http://192.168.0.32:8080';
+  const API_URL =  process.env.EXPO_PUBLIC_API_BASE;
 
   useEffect(() => {
     const initializeData = async () => {

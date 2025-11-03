@@ -82,7 +82,7 @@ const RoutinesScreen = () => {
   
   const router = useRouter();
 
-  const API_URL = 'http://192.168.0.32:8080';
+  const API_URL =  process.env.EXPO_PUBLIC_API_BASE;
 
   const getInfoCardKey = (username: string) => `routines_info_hidden_${username}`;
 

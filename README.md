@@ -1,6 +1,10 @@
 # StayRPE
 
-![](stayrpe1.gif)
+<p align="center">
+  <img src="stayrpe1.gif" width="250"/>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="stayrpe2.gif" width="250"/>
+</p>
 
 **StayRPE** es una aplicación multiplataforma para la gestión y seguimiento de entrenamientos de fuerza, orientada a la planificación avanzada y análisis del progreso mediante periodización y metodologías modernas como RPE (Rate of Perceived Exertion) y RIR (Reps in Reserve). Desarrollada como proyecto final del ciclo de Desarrollo de Aplicaciones Multiplataforma (DAM).
 

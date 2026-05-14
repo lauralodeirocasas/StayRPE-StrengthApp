@@ -1,5 +1,4 @@
 # StayRPE
-## Demo
 
 ![StayRPE Demo](./stayrpe1.gif)
 
